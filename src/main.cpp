@@ -19,21 +19,30 @@
 #define BUTTON_PIN 14 
 int buttonPressed  = 0;
 
+//hallsensor
+#define HALL_PIN 4
+
 //wifi
-const char* ssid     = "";
-const char* password = "";
+const char* ssid     = WIFI_SSID;
+const char* password = WIFI_PASS;
 
 //time
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3 * 3600;
 const int   daylightOffset_sec = 0;
 
+int loopDelayTime = 500;
+int loopCacheWeather = 120 * 5; //5min  
+
+const char* openWeatherApiKey = OPEN_WEATHER_API_KEY;
+
 //log
 #define MAX_LOG_LINES 6
 String logLines[MAX_LOG_LINES];
 int logCount = 0;
 
-JSONVar openWeatherRespone;
+JSONVar openWeatherCache;
+char openWeatherLastUpdatedTime[6];
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -97,8 +106,10 @@ JSONVar getWeather() {
   HTTPClient http;
 
   String response = "{}";
-  String url = "https://api.openweathermap.org/data/2.5/weather?lat=49.83935806420136&lon=24.02160867276371&appid=&units=metric";
+  String url = "https://api.openweathermap.org/data/2.5/weather?lat=49.83935806420136&lon=24.02160867276371&appid={OPEN_WEATHER_API_KEY}&units=metric";
   
+  url.replace("{OPEN_WEATHER_API_KEY}", openWeatherApiKey);
+
   http.begin(url.c_str());
 
   int httpResponseCode = http.GET();
@@ -122,16 +133,26 @@ JSONVar getWeather() {
   return openWeather;
 }
 
+void clearWeatherCache() {
+  openWeatherCache = JSONVar();
+  Serial.println("weather cache clear");
+}
+
 void showWeather() {
   JSONVar openWeather;
 
-  if (openWeatherRespone == JSONVar()) {
+  if (openWeatherCache == JSONVar()) {
     Serial.println("request");
-    openWeatherRespone = getWeather();
-    openWeather = openWeatherRespone;
+    openWeatherCache = getWeather();
+    openWeather = openWeatherCache;
+
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo)) {
+      strftime(openWeatherLastUpdatedTime, sizeof(openWeatherLastUpdatedTime), "%H:%M", &timeinfo);
+    }
   } else {
     Serial.println("cache");
-    openWeather = openWeatherRespone;
+    openWeather = openWeatherCache;
   }
 
   const char* icon = (const char*)openWeather["weather"][0]["icon"];
@@ -176,16 +197,62 @@ void showWeather() {
 
   display.setCursor(40, 46);
   display.printf("Humidity: %d%%", humidity);
+
+  display.setTextSize(1);
+  display.setCursor(0, 56);
+
+  // display.printf("Updated at %s", openWeatherLastUpdatedTime);
 }
 
 void showHamster() {
+  int value = digitalRead(HALL_PIN);
+  String magnet;
+  
+  if (value == LOW) {
+    magnet = "- true";
+  } else {
+    magnet = "- false";
+  }
+  
+  Serial.println(magnet);
+
+  display.setTextSize(1);
+
+  display.setCursor(70, 0);
+  display.print("Magnet");
+
+  display.setCursor(70, 10);
+  display.print(magnet);
+
+
   display.drawBitmap(0, 0, hamster_wheel, SCREEN_WIDTH/2, SCREEN_HEIGHT, SSD1306_WHITE);
+}
+
+void initWIFI() {
+  WiFi.begin(ssid, password);
+
+  addLog("Connecting to WIFI...");
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    addLog("WIFI failed"); 
+  }
+
+  addLog("WIFI connected");
+}
+
+void initTime() {
+  addLog("Getting time...");
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  getTime();
 }
 
 void setup() {
   Serial.begin(115200);
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(HALL_PIN, INPUT);
+  Serial.println("Hall sensor ready!");
 
   //init display
   Wire.begin(SDA_PIN, SCL_PIN);
@@ -199,28 +266,20 @@ void setup() {
   display.setTextColor(SSD1306_WHITE);
 
   //init wifi
-  WiFi.begin(ssid, password);
-
-  addLog("Connecting to WIFI...");
-  
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    addLog("WIFI failed"); 
-  }
-
-  addLog("WIFI connected");
+  initWIFI();
 
   //init time
-  addLog("Getting time...");
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  getTime();
+  initTime();
  
-  addLog("Getting weather!");
-  delay(1000);
+  if (buttonPressed == 0) {
+    addLog("Getting weather...");
+  }
 }
 
+int i = 0;
+
 void loop() {
-  delay(1000);
+  delay(loopDelayTime);
   
   display.clearDisplay();
   display.setTextSize(2);
@@ -245,4 +304,15 @@ void loop() {
   }
 
   display.display(); 
+
+  Serial.print(loopCacheWeather);
+  Serial.print(" = ");
+  Serial.print(i);
+
+  if (loopCacheWeather == i) {
+    clearWeatherCache();
+    i = 0;
+  }
+
+  i++;
 }
