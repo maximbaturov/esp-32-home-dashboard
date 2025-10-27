@@ -236,7 +236,17 @@ void showWeather() {
   display.display();
 }
 
-void showRobot() {
+void showRobot(bool firstBoot) {
+  long r;
+
+  if(firstBoot) {
+      // Startup robo eyes
+      roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 100); // screen-width, screen-height, max framerate - 60-100fps are good for smooth animations
+      roboEyes.setAutoblinker(ON, 3, 2); // Start auto blinker animation cycle -> bool active, int interval, int variation -> turn on/off, set interval between each blink in full seconds, set range for random interval variation in full seconds
+      roboEyes.setIdleMode(ON, 2, 2); // Start idle animation cycle (eyes looking in random directions) -> turn on/off, set interval between each eye repositioning in full seconds, set range for random time interval variation in full seconds
+      
+      eventTimer = millis(); // start event timer from here
+  }
   // roboEyes.setCuriosity(ON); // bool on/off -> when turned on, height of the outer eyes increases when moving to the very left or very right
 
   // Set horizontal or vertical flickering
@@ -260,16 +270,31 @@ void showRobot() {
   }
   // Do once after defined number of milliseconds
   if(millis() >= eventTimer+4000 && event2wasPlayed == 0){
+    r = random(0, 3);
     event2wasPlayed = 1; // flag variable to make sure the event will only be handled once
     roboEyes.setMood(HAPPY);
-    // roboEyes.anim_laugh();
-    //roboEyes.anim_confused();
+    
+    if(r == 1) {
+      roboEyes.anim_laugh();
+    }
+
+    if (r == 2) {
+      roboEyes.anim_confused();
+    }
   }
   // Do once after defined number of milliseconds
   if(millis() >= eventTimer+6000 && event3wasPlayed == 0){
     event3wasPlayed = 1; // flag variable to make sure the event will only be handled once
-    roboEyes.setMood(TIRED);
-    //roboEyes.blink();
+
+    if (random(0, 2)) {
+       roboEyes.setMood(TIRED);
+    } else {
+       roboEyes.setMood(ANGRY);
+    }
+
+    if (random(0, 2)) {
+      roboEyes.blink();
+    }
   }
   // Do once after defined number of milliseconds, then reset timer and flags to restart the whole animation sequence
   if(millis() >= eventTimer+8000){
@@ -478,13 +503,6 @@ void loop() {
     if (i == 0) {
       //init time
       initTime();
-    
-      // Startup robo eyes
-      roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 100); // screen-width, screen-height, max framerate - 60-100fps are good for smooth animations
-      roboEyes.setAutoblinker(ON, 3, 2); // Start auto blinker animation cycle -> bool active, int interval, int variation -> turn on/off, set interval between each blink in full seconds, set range for random interval variation in full seconds
-      roboEyes.setIdleMode(ON, 2, 2); // Start idle animation cycle (eyes looking in random directions) -> turn on/off, set interval between each eye repositioning in full seconds, set range for random time interval variation in full seconds
-      
-      eventTimer = millis(); // start event timer from here
 
       if (buttonPressed == 0) {
         addLog("Getting weather...");
@@ -536,7 +554,8 @@ void loop() {
     } else if (buttonPressed == 1) {
       showTime();
     } else if (buttonPressed == 2) {
-      showRobot();
+      
+      showRobot(robotFirstTimeShow);
     } 
     // else if (buttonPressed == 3) {
     //   long r;
