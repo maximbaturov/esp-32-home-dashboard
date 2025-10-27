@@ -7,6 +7,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "bmp.h"
+#include <FluxGarage_RoboEyes.h>
 
 void initAccessPoint();
 
@@ -21,7 +22,16 @@ void initAccessPoint();
 //button
 #define BUTTON_PIN 14 
 int buttonPressed  = 0;
-int resetPressed  = 0;
+int resetHoldCount  = 0;
+long lastRandom = 0;
+int randomLoopCount = 0;
+const int randomLoopThreshold = 200;
+const int resetHoldThreshold = 20;
+
+//screens
+// const int weatherScreen = 1;
+// const int clockScreen = 2;
+// const int robotScreen = 3;
 
 //wifi
 const char* ssid     = WIFI_SSID;
@@ -49,6 +59,14 @@ JSONVar openWeatherCache;
 char openWeatherLastUpdatedTime[6];
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+//robo eyes
+RoboEyes<Adafruit_SSD1306> roboEyes(display); 
+
+unsigned long eventTimer;
+bool event1wasPlayed = 0;
+bool event2wasPlayed = 0;
+bool event3wasPlayed = 0;
 
 void addLog(const String &msg) {
   if (logCount >= MAX_LOG_LINES) {
@@ -87,6 +105,11 @@ void getTime() {
 void showTime() {
   struct tm timeinfo;
 
+  Serial.println("show time func");
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+
   if (getLocalTime(&timeinfo)) {
       char buffer[16];
       strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
@@ -104,6 +127,8 @@ void showTime() {
     display.setCursor(0, 0);
     display.println("сan not show time");
   }
+
+  display.display();
 }
 
 JSONVar getWeather() {
@@ -144,7 +169,11 @@ void clearWeatherCache() {
 
 void showWeather() {
   JSONVar openWeather;
-
+  
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  
   if (openWeatherCache == JSONVar()) {
     Serial.println("request");
     openWeatherCache = getWeather();
@@ -165,8 +194,6 @@ void showWeather() {
   double feels = (double)openWeather["main"]["feels_like"];
   double wind_speed = (double)openWeather["wind"]["speed"];
   int humidity = (int)openWeather["main"]["humidity"];
-
-  Serial.println(wind_speed);
 
   if (strcmp(icon, "01d") == 0 || strcmp(icon, "01n") == 0) {
     display.drawBitmap(0, 0, sunny, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
@@ -206,10 +233,55 @@ void showWeather() {
   display.setCursor(0, 56);
 
   // display.printf("Updated at %s", openWeatherLastUpdatedTime);
+  display.display();
 }
 
 void showRobot() {
-  display.drawBitmap(0, 0, hamster_wheel, SCREEN_WIDTH/2, SCREEN_HEIGHT, SSD1306_WHITE);
+  // roboEyes.setCuriosity(ON); // bool on/off -> when turned on, height of the outer eyes increases when moving to the very left or very right
+
+  // Set horizontal or vertical flickering
+  // roboEyes.setHFlicker(ON, 2); // bool on/off, byte amplitude -> horizontal flicker: alternately displacing the eyes in the defined amplitude in pixels
+  // roboEyes.setVFlicker(ON, 2); // bool on/off, byte amplitude -> vertical flicker: alternately displacing the eyes in the defined amplitude in pixels
+
+  // Play prebuilt oneshot animations
+  // roboEyes.anim_confused(); // confused - eyes shaking left and right
+  // roboEyes.anim_laugh(); // laughing - eyes shaking up and down
+
+  // roboEyes.setPosition(DEFAULT); // eye position should be middle center
+  // roboEyes.close(); // start with closed eyes 
+
+  roboEyes.update(); // update eyes drawings
+
+  // LOOPED ANIMATION SEQUENCE
+  // Do once after defined number of milliseconds
+  if(millis() >= eventTimer+2000 && event1wasPlayed == 0){
+    event1wasPlayed = 1; // flag variable to make sure the event will only be handled once
+    roboEyes.open(); // open eyes 
+  }
+  // Do once after defined number of milliseconds
+  if(millis() >= eventTimer+4000 && event2wasPlayed == 0){
+    event2wasPlayed = 1; // flag variable to make sure the event will only be handled once
+    roboEyes.setMood(HAPPY);
+    // roboEyes.anim_laugh();
+    //roboEyes.anim_confused();
+  }
+  // Do once after defined number of milliseconds
+  if(millis() >= eventTimer+6000 && event3wasPlayed == 0){
+    event3wasPlayed = 1; // flag variable to make sure the event will only be handled once
+    roboEyes.setMood(TIRED);
+    //roboEyes.blink();
+  }
+  // Do once after defined number of milliseconds, then reset timer and flags to restart the whole animation sequence
+  if(millis() >= eventTimer+8000){
+    roboEyes.close(); // close eyes again
+    roboEyes.setMood(DEFAULT);
+    // Reset the timer and the event flags to restart the whole "complex animation loop"
+    eventTimer = millis(); // reset timer
+    event1wasPlayed = 0; // reset flags
+    event2wasPlayed = 0;
+    event3wasPlayed = 0;
+  }
+  // END OF LOOPED ANIMATION SEQUENCE
 }
 
 bool wifiConnect(String ssid, String password) {
@@ -236,6 +308,26 @@ bool wifiConnect(String ssid, String password) {
   }
 
   return false;
+}
+
+void wifiConnect2() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  int retries = 0;
+  addLog("Connecting to WIFI...");
+  
+  while (WiFi.status() != WL_CONNECTED && retries < 20) {
+    delay(500);
+    addLog("WIFI failed"); 
+    retries++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    addLog("WIFI connected");
+    addLog("Local IP:");
+    addLog(WiFi.localIP().toString());
+  }
 }
 
 void httpIndex() {
@@ -371,10 +463,13 @@ void setup() {
   addLog("PopBot wakes up");
 
   //init wifi
-  initAccessPoint();
+  // initAccessPoint();
+  wifiConnect2();
+  isAccessMode = false;
 }
 
 int i = 0;
+bool robotFirstTimeShow = false;
 
 void loop() {
   if(isAccessMode) {
@@ -384,34 +479,57 @@ void loop() {
       //init time
       initTime();
     
+      // Startup robo eyes
+      roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 100); // screen-width, screen-height, max framerate - 60-100fps are good for smooth animations
+      roboEyes.setAutoblinker(ON, 3, 2); // Start auto blinker animation cycle -> bool active, int interval, int variation -> turn on/off, set interval between each blink in full seconds, set range for random interval variation in full seconds
+      roboEyes.setIdleMode(ON, 2, 2); // Start idle animation cycle (eyes looking in random directions) -> turn on/off, set interval between each eye repositioning in full seconds, set range for random time interval variation in full seconds
+      
+      eventTimer = millis(); // start event timer from here
+
       if (buttonPressed == 0) {
         addLog("Getting weather...");
       }
     }
 
-    delay(loopDelayTime);
-  
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setTextColor(SSD1306_WHITE);
+    robotFirstTimeShow = false;
 
     if (digitalRead(BUTTON_PIN) == LOW) {
-      if (buttonPressed == 0) {
+      if (buttonPressed <= 1) {
         buttonPressed++;
-      } else if(buttonPressed == 1) {
-        buttonPressed++;
-      } else if(buttonPressed == 2) {
+        if (buttonPressed == 2) {
+          robotFirstTimeShow = true;
+        }
+      } else {
         buttonPressed = 0;
       }
 
-      resetPressed++;
+      resetHoldCount++;
     } else {
-      resetPressed = 0;
+      resetHoldCount = 0;
     }
 
-    if(resetPressed == 20) {
+    if(resetHoldCount == resetHoldThreshold) {
         return setup();
     }
+
+    if( buttonPressed <= 1 || robotFirstTimeShow) {
+      delay(loopDelayTime);
+    }
+
+    // switch(buttonPressed) {
+    //   case weatherScreen: 
+    //     showWeather();
+    //     break;
+    //   case clockScreen:
+    //     showTime();
+    //     break;
+    //   case robotScreen:
+    //     showRobot();
+    //     break;
+    //   default: 
+    //     showWeather();
+    //     break; 
+    // }
 
     if (buttonPressed == 0) {
       showWeather();
@@ -419,13 +537,32 @@ void loop() {
       showTime();
     } else if (buttonPressed == 2) {
       showRobot();
-    }
+    } 
+    // else if (buttonPressed == 3) {
+    //   long r;
 
-    display.display(); 
+    //   if (lastRandom == 0 || randomLoopCount == randomLoopThreshold) {
+    //     r = random(1, 3);
+    //     lastRandom = r;
+    //   } else {
+    //     r = lastRandom;
+    //   }
 
-    Serial.printf("%d = %d", loopCacheWeather, i);
+    //   if (r == 1) {
+    //     delay(loopDelayTime);
+    //     showWeather();
+    //   } else if(r == 2) {
+    //     delay(loopDelayTime);
+    //     showTime();
+    //   } else if(r == 3) {
+    //     showRobot();
+    //   }
 
-    if (loopCacheWeather == i) {
+    //   randomLoopCount++;
+    // }
+
+  
+    if (buttonPressed != 2 && i >= loopCacheWeather) {
       clearWeatherCache();
       i = 0;
     }
