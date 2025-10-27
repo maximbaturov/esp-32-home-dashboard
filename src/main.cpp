@@ -2,10 +2,13 @@
 #include <Arduino_JSON.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <WebServer.h>
 #include <HTTPClient.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "bmp.h"
+
+void initAccessPoint();
 
 //screen
 #define SCREEN_WIDTH 128
@@ -18,13 +21,14 @@
 //button
 #define BUTTON_PIN 14 
 int buttonPressed  = 0;
-
-//hallsensor
-#define HALL_PIN 4
+int resetPressed  = 0;
 
 //wifi
 const char* ssid     = WIFI_SSID;
 const char* password = WIFI_PASS;
+bool isAccessMode = true; 
+
+WebServer server(80);
 
 //time
 const char* ntpServer = "pool.ntp.org";
@@ -204,41 +208,142 @@ void showWeather() {
   // display.printf("Updated at %s", openWeatherLastUpdatedTime);
 }
 
-void showHamster() {
-  int value = digitalRead(HALL_PIN);
-  String magnet;
-  
-  if (value == LOW) {
-    magnet = "- true";
-  } else {
-    magnet = "- false";
-  }
-  
-  Serial.println(magnet);
-
-  display.setTextSize(1);
-
-  display.setCursor(70, 0);
-  display.print("Magnet");
-
-  display.setCursor(70, 10);
-  display.print(magnet);
-
-
+void showRobot() {
   display.drawBitmap(0, 0, hamster_wheel, SCREEN_WIDTH/2, SCREEN_HEIGHT, SSD1306_WHITE);
 }
 
-void initWIFI() {
+bool wifiConnect(String ssid, String password) {
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
+  int retries = 0;
   addLog("Connecting to WIFI...");
   
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED && retries < 20) {
     delay(500);
     addLog("WIFI failed"); 
+    retries++;
   }
 
-  addLog("WIFI connected");
+  if (WiFi.status() == WL_CONNECTED) {
+    addLog("WIFI connected");
+    addLog("Local IP:");
+    addLog(WiFi.localIP().toString());
+
+    isAccessMode = false;
+    return true;
+  }
+
+  return false;
+}
+
+void httpIndex() {
+if (server.hasArg("name") && server.hasArg("password")) {
+    String name = server.arg("name");
+    String password = server.arg("password");
+
+    addLog("Name: ");
+    addLog(name);
+
+    addLog("Password: ");
+    addLog(password);
+
+    if(!wifiConnect(name, password)) {
+      initAccessPoint();
+    }
+  } else {
+    String html = R"rawliteral(
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>PopBot Server</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #55d275ff, #0072ff);
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+          }
+          .container {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 30px 40px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          }
+          input[type="text"] {
+            padding: 10px 15px;
+            width: 200px;
+            border: none;
+            border-radius: 5px;
+            margin-right: 10px;
+          }
+          input[type="submit"] {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #00e676;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+          }
+          input[type="submit"]:hover {
+            background-color: #69f0ae;
+          }
+          h1 {
+            margin-bottom: 20px;
+          }
+          .form-control {
+            margin-bottom: 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>PopBot 🤖</h1>
+          <h5>WiFi налаштування</h1>
+          <form method="POST" action="/">
+            <div class="form-control"><input name="name" type="text" placeholder="ім'я" required></div>
+            <div class="form-control"><input name="password" type="text" placeholder="пароль" required></div>
+            <div class="form-control"><input type="submit" value="Send"></div>
+          </form>
+        </div>
+      </body>
+      </html>
+      )rawliteral";
+
+      server.send(200, "text/html", html);
+  }
+}
+
+void initAccessPoint() {
+  String sid = "PopBot";
+
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(sid, "");
+
+  IPAddress ip = WiFi.softAPIP();
+  addLog("Access Point started");
+
+  char msg[64];
+  snprintf(msg, sizeof(msg), "WiFi: %s", sid);
+  addLog(msg);
+
+  addLog("IP Address:");
+  addLog(ip.toString());
+
+  server.on("/", httpIndex);
+  server.begin();
+  addLog("Server started");
+
+  isAccessMode = true;
 }
 
 void initTime() {
@@ -251,8 +356,6 @@ void setup() {
   Serial.begin(115200);
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  pinMode(HALL_PIN, INPUT);
-  Serial.println("Hall sensor ready!");
 
   //init display
   Wire.begin(SDA_PIN, SCL_PIN);
@@ -265,54 +368,69 @@ void setup() {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
-  //init wifi
-  initWIFI();
+  addLog("PopBot wakes up");
 
-  //init time
-  initTime();
- 
-  if (buttonPressed == 0) {
-    addLog("Getting weather...");
-  }
+  //init wifi
+  initAccessPoint();
 }
 
 int i = 0;
 
 void loop() {
-  delay(loopDelayTime);
-  
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setTextColor(SSD1306_WHITE);
-
-  if (digitalRead(BUTTON_PIN) == LOW) {
-    if (buttonPressed == 0) {
-      buttonPressed++;
-    } else if(buttonPressed == 1) {
-      buttonPressed++;
-    }else if(buttonPressed == 2) {
-      buttonPressed = 0;
+  if(isAccessMode) {
+    server.handleClient();
+  } else {
+    if (i == 0) {
+      //init time
+      initTime();
+    
+      if (buttonPressed == 0) {
+        addLog("Getting weather...");
+      }
     }
+
+    delay(loopDelayTime);
+  
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setTextColor(SSD1306_WHITE);
+
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      if (buttonPressed == 0) {
+        buttonPressed++;
+      } else if(buttonPressed == 1) {
+        buttonPressed++;
+      } else if(buttonPressed == 2) {
+        buttonPressed = 0;
+      }
+
+      resetPressed++;
+    } else {
+      resetPressed = 0;
+    }
+
+    if(resetPressed == 20) {
+        return setup();
+    }
+
+    if (buttonPressed == 0) {
+      showWeather();
+    } else if (buttonPressed == 1) {
+      showTime();
+    } else if (buttonPressed == 2) {
+      showRobot();
+    }
+
+    display.display(); 
+
+    Serial.printf("%d = %d", loopCacheWeather, i);
+
+    if (loopCacheWeather == i) {
+      clearWeatherCache();
+      i = 0;
+    }
+
+    i++;
   }
-
-  if (buttonPressed == 0) {
-    showWeather();
-  } else if (buttonPressed == 1) {
-    showTime();
-  } else if (buttonPressed == 2) {
-    showHamster();
-  }
-
-  display.display(); 
-
-  Serial.print(loopCacheWeather);
-  Serial.print(" = ");
-  Serial.print(i);
-
-  if (loopCacheWeather == i) {
-    clearWeatherCache();
-    i = 0;
-  }
-
-  i++;
+ 
 }
