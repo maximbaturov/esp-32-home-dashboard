@@ -227,65 +227,99 @@ void showRobot(bool firstBoot) {
       roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 100); // screen-width, screen-height, max framerate - 60-100fps are good for smooth animations
       roboEyes.setAutoblinker(ON, 3, 2); // Start auto blinker animation cycle -> bool active, int interval, int variation -> turn on/off, set interval between each blink in full seconds, set range for random interval variation in full seconds
       roboEyes.setIdleMode(ON, 2, 2); // Start idle animation cycle (eyes looking in random directions) -> turn on/off, set interval between each eye repositioning in full seconds, set range for random time interval variation in full seconds
-      
       eventTimer = millis(); // start event timer from here
   }
-  // roboEyes.setCuriosity(ON); // bool on/off -> when turned on, height of the outer eyes increases when moving to the very left or very right
+roboEyes.update();
+  // roboEyes.setPosition(DEFAULT);
+  roboEyes.open();
 
-  // Set horizontal or vertical flickering
-  // roboEyes.setHFlicker(ON, 2); // bool on/off, byte amplitude -> horizontal flicker: alternately displacing the eyes in the defined amplitude in pixels
-  // roboEyes.setVFlicker(ON, 2); // bool on/off, byte amplitude -> vertical flicker: alternately displacing the eyes in the defined amplitude in pixels
+  // if(random(0, 2)) {
+  //   roboEyes.setCuriosity(ON);
+  // }
+roboEyes.setMood(HAPPY);
+  // r = random(0, 4);
 
-  // roboEyes.setPosition(DEFAULT); // eye position should be middle center
+  // if(r == 1) {
+  //   roboEyes.setMood(TIRED);
+  // }else if(r == 2) {
+  //     roboEyes.setMood(ANGRY);
+  // }else if (r == 3) {
+  //   roboEyes.setMood(HAPPY);
+  // }else{
+  //   roboEyes.setMood(DEFAULT);
+  // }
 
-  roboEyes.update(); // update eyes drawings
+  // r = random(0, 3);
+  // if(r == 1) {
+  //       roboEyes.anim_laugh();
+  //     }
 
-  // LOOPED ANIMATION SEQUENCE
-  // Do once after defined number of milliseconds
-  if(millis() >= eventTimer+2000 && event1wasPlayed == 0){
-    event1wasPlayed = 1; // flag variable to make sure the event will only be handled once
-    roboEyes.open(); // open eyes 
-  }
+  // if (r == 2) {
+  //   roboEyes.anim_confused();
+  // }
 
-  // Do once after defined number of milliseconds
-  if(millis() >= eventTimer+4000 && event2wasPlayed == 0){
-    r = random(0, 3);
-    event2wasPlayed = 1; // flag variable to make sure the event will only be handled once
-    roboEyes.setMood(HAPPY);
+  // if (random(0, 2)) {
+  //     roboEyes.blink();
+  // }
+
+  // roboEyes.close();
+
+  // // roboEyes.setCuriosity(ON); // bool on/off -> when turned on, height of the outer eyes increases when moving to the very left or very right
+
+  // // Set horizontal or vertical flickering
+  // // roboEyes.setHFlicker(ON, 2); // bool on/off, byte amplitude -> horizontal flicker: alternately displacing the eyes in the defined amplitude in pixels
+  // // roboEyes.setVFlicker(ON, 2); // bool on/off, byte amplitude -> vertical flicker: alternately displacing the eyes in the defined amplitude in pixels
+
+  // // roboEyes.setPosition(DEFAULT); // eye position should be middle center
+
+  // roboEyes.update(); // update eyes drawings
+
+  // // LOOPED ANIMATION SEQUENCE
+  // // Do once after defined number of milliseconds
+  // if(millis() >= eventTimer+2000 && event1wasPlayed == 0){
+  //   event1wasPlayed = 1; // flag variable to make sure the event will only be handled once
+  //   roboEyes.open(); // open eyes 
+  // }
+
+  // // Do once after defined number of milliseconds
+  // if(millis() >= eventTimer+4000 && event2wasPlayed == 0){
+  //   r = random(0, 3);
+  //   event2wasPlayed = 1; // flag variable to make sure the event will only be handled once
+  //   roboEyes.setMood(HAPPY);
     
-    if(r == 1) {
-      roboEyes.anim_laugh();
-    }
+  //   if(r == 1) {
+  //     roboEyes.anim_laugh();
+  //   }
 
-    if (r == 2) {
-      roboEyes.anim_confused();
-    }
-  }
-  // Do once after defined number of milliseconds
-  if(millis() >= eventTimer+6000 && event3wasPlayed == 0){
-    event3wasPlayed = 1; // flag variable to make sure the event will only be handled once
+  //   if (r == 2) {
+  //     roboEyes.anim_confused();
+  //   }
+  // }
+  // // Do once after defined number of milliseconds
+  // if(millis() >= eventTimer+6000 && event3wasPlayed == 0){
+  //   event3wasPlayed = 1; // flag variable to make sure the event will only be handled once
 
-    if (random(0, 2)) {
-       roboEyes.setMood(TIRED);
-    } else {
-       roboEyes.setMood(ANGRY);
-    }
+  //   if (random(0, 2)) {
+  //      roboEyes.setMood(TIRED);
+  //   } else {
+  //      roboEyes.setMood(ANGRY);
+  //   }
 
-    if (random(0, 2)) {
-      roboEyes.blink();
-    }
-  }
-  // Do once after defined number of milliseconds, then reset timer and flags to restart the whole animation sequence
-  if(millis() >= eventTimer+8000){
-    roboEyes.close(); // close eyes again
-    roboEyes.setMood(DEFAULT);
-    // Reset the timer and the event flags to restart the whole "complex animation loop"
-    eventTimer = millis(); // reset timer
-    event1wasPlayed = 0; // reset flags
-    event2wasPlayed = 0;
-    event3wasPlayed = 0;
-  }
-  // END OF LOOPED ANIMATION SEQUENCE
+  //   if (random(0, 2)) {
+  //     roboEyes.blink();
+  //   }
+  // }
+  // // Do once after defined number of milliseconds, then reset timer and flags to restart the whole animation sequence
+  // if(millis() >= eventTimer+8000){
+  //   roboEyes.close(); // close eyes again
+  //   roboEyes.setMood(DEFAULT);
+  //   // Reset the timer and the event flags to restart the whole "complex animation loop"
+  //   eventTimer = millis(); // reset timer
+  //   event1wasPlayed = 0; // reset flags
+  //   event2wasPlayed = 0;
+  //   event3wasPlayed = 0;
+  // }
+  // // END OF LOOPED ANIMATION SEQUENCE
 }
 
 bool wifiConnect(String ssid, String password) {
@@ -485,76 +519,85 @@ void setup() {
 
   //init wifi
   // initAccessPoint();
-  wifiConnect2();
-  isAccessMode = false;
+  // wifiConnect2();
+  // isAccessMode = false;
 }
+
+bool robotFirstTimeShow = true;
 
 void loop() {
-  if(isAccessMode) {
-    server.handleClient();
-  } else {
-    if (isFirstLoopIteration) {
-      //init time
-      initTime();
-
-      if (buttonPressed == 0) {
-        addLog("Getting weather...");
-      }
-      isFirstLoopIteration = false;
-    }
-
-    bool robotFirstTimeShow = false;
-    bool newState = digitalRead(BUTTON_PIN);
-    
-    if (newState == LOW && buttonState == LOW) {
-      Serial.printf("HOLD %d\n", millis() - lastButtonPress);
-
-      if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
-          return setup();
-      }
-
-      buttonHoldMillis = millis();
-    }
-
-    if (newState == LOW && buttonState == HIGH && millis() - lastButtonPress > 300) {
-      currentScreen = (currentScreen + 1) % 3;
-
-      if (buttonPressed == ROBOT_SCREEN) {
-          robotFirstTimeShow = true;
-      }
-
-      lastButtonPress = millis();
-      Serial.printf("Switched to screen %d\n", currentScreen + 1);
-    }
-
-    buttonState = newState;
-
-    switch (currentScreen) {
-      case WEATHER_SCREEN: showWeather(); break;
-      case CLOCK_SCREEN: showTime(); break;
-      case ROBOT_SCREEN: showRobot(robotFirstTimeShow); break;
-    }
-
-    //   long r;
-
-    //   if (lastRandom == 0 || randomLoopCount == randomLoopThreshold) {
-    //     r = random(1, 3);
-    //     lastRandom = r;
-    //   } else {
-    //     r = lastRandom;
-    //   }
-
-    //   if (r == 1) {
-    //     delay(loopDelayTime);
-    //     showWeather();
-    //   } else if(r == 2) {
-    //     delay(loopDelayTime);
-    //     showTime();
-    //   } else if(r == 3) {
-    //     showRobot();
-    //   }
-
-    //   randomLoopCount++;
+  showRobot(robotFirstTimeShow);
+  if(robotFirstTimeShow == true) {
+    robotFirstTimeShow = false;
   }
- 
 }
+
+// void loop() {
+//   if(isAccessMode) {
+//     server.handleClient();
+//   } else {
+//     if (isFirstLoopIteration) {
+//       //init time
+//       initTime();
+
+//       if (buttonPressed == 0) {
+//         addLog("Getting weather...");
+//       }
+//       isFirstLoopIteration = false;
+//     }
+
+//     bool robotFirstTimeShow = false;
+//     bool newState = digitalRead(BUTTON_PIN);
+    
+//     if (newState == LOW && buttonState == LOW) {
+//       Serial.printf("HOLD %d\n", millis() - lastButtonPress);
+
+//       if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
+//           return setup();
+//       }
+
+//       buttonHoldMillis = millis();
+//     }
+
+//     if (newState == LOW && buttonState == HIGH && millis() - lastButtonPress > 300) {
+//       currentScreen = (currentScreen + 1) % 3;
+
+//       if (buttonPressed == ROBOT_SCREEN) {
+//           robotFirstTimeShow = true;
+//       }
+
+//       lastButtonPress = millis();
+//       Serial.printf("Switched to screen %d\n", currentScreen + 1);
+//     }
+
+//     buttonState = newState;
+
+//     switch (currentScreen) {
+//       case WEATHER_SCREEN: showWeather(); break;
+//       case CLOCK_SCREEN: showTime(); break;
+//       case ROBOT_SCREEN: showRobot(robotFirstTimeShow); break;
+//     }
+
+//     //   long r;
+
+//     //   if (lastRandom == 0 || randomLoopCount == randomLoopThreshold) {
+//     //     r = random(1, 3);
+//     //     lastRandom = r;
+//     //   } else {
+//     //     r = lastRandom;
+//     //   }
+
+//     //   if (r == 1) {
+//     //     delay(loopDelayTime);
+//     //     showWeather();
+//     //   } else if(r == 2) {
+//     //     delay(loopDelayTime);
+//     //     showTime();
+//     //   } else if(r == 3) {
+//     //     showRobot();
+//     //   }
+
+//     //   randomLoopCount++;
+//   }
+ 
+// }
