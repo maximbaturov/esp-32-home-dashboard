@@ -11,7 +11,7 @@
 
 void initAccessPoint();
 
-//screen
+//display
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define SDA_PIN 21
@@ -19,23 +19,34 @@ void initAccessPoint();
 #define OLED_ADDR 0x3C
 #define OLED_RESET -1
 
+bool isFirstLoopIteration = true;
+
 //button
 #define BUTTON_PIN 14 
 int buttonPressed  = 0;
-int resetHoldCount  = 0;
-long lastRandom = 0;
-int randomLoopCount = 0;
-const int randomLoopThreshold = 200;
-const int resetHoldThreshold = 20;
+int buttonHoldMillis  = 0;
+const int RESET_HOLD_THRESHOLD = 15 * 1000; //15sec
+
+// long lastRandom = 0;
+// int randomLoopCount = 0;
+// const int randomLoopThreshold = 200;
+
+
+bool buttonState = HIGH;
+unsigned long lastButtonPress = 0;
+
+//weather
+JSONVar openWeatherCache;
+const unsigned long WEATHER_CACHE_TIMEOUT = 5 * 60 * 1000; //5min
+unsigned long lastWeatherUpdate = 0;
 
 //screens
-const int weatherScreen = 0;
-const int clockScreen = 1;
-const int robotScreen = 2;
+const int WEATHER_SCREEN = 0;
+const int CLOCK_SCREEN = 1;
+const int ROBOT_SCREEN = 2;
+int currentScreen = WEATHER_SCREEN;
 
 //wifi
-const char* ssid     = WIFI_SSID;
-const char* password = WIFI_PASS;
 bool isAccessMode = true; 
 
 WebServer server(80);
@@ -45,18 +56,10 @@ const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3 * 3600;
 const int   daylightOffset_sec = 0;
 
-int loopDelayTime = 100;
-int loopCacheWeather = 600 * 5; //5min  
-
-const char* openWeatherApiKey = OPEN_WEATHER_API_KEY;
-
 //log
 #define MAX_LOG_LINES 6
 String logLines[MAX_LOG_LINES];
 int logCount = 0;
-
-JSONVar openWeatherCache;
-char openWeatherLastUpdatedTime[6];
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -88,23 +91,9 @@ void addLog(const String &msg) {
   Serial.println(msg);
 }
 
-void getTime() {
-  struct tm timeinfo;
-  
-  if (!getLocalTime(&timeinfo)) {
-    addLog("Failed to get time");
-    delay(500);
-    getTime();
-  } else {
-    addLog("Time updated!");
-    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-  }
-}
-
 void showTime() {
   struct tm timeinfo;
 
-  Serial.println("show time func");
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
@@ -123,8 +112,8 @@ void showTime() {
       display.println(buffer);
   } else {
     display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("сan not show time");
+    display.setCursor(10, 10);
+    display.println("сan't show time");
   }
 
   display.display();
@@ -136,7 +125,7 @@ JSONVar getWeather() {
   String response = "{}";
   String url = "https://api.openweathermap.org/data/2.5/weather?lat=49.83935806420136&lon=24.02160867276371&appid={OPEN_WEATHER_API_KEY}&units=metric";
   
-  url.replace("{OPEN_WEATHER_API_KEY}", openWeatherApiKey);
+  url.replace("{OPEN_WEATHER_API_KEY}", OPEN_WEATHER_API_KEY);
 
   http.begin(url.c_str());
 
@@ -161,56 +150,52 @@ JSONVar getWeather() {
   return openWeather;
 }
 
-void clearWeatherCache() {
-  openWeatherCache = JSONVar();
-  Serial.println("weather cache clear");
-}
-
 void showWeather() {
   JSONVar openWeather;
+  unsigned long now = millis();
   
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
   
-  if (openWeatherCache == JSONVar()) {
-    Serial.println("request");
+  if (openWeatherCache == JSONVar() || now - lastWeatherUpdate > WEATHER_CACHE_TIMEOUT) {
+    Serial.println("request weather");
     openWeatherCache = getWeather();
     openWeather = openWeatherCache;
-
-    struct tm timeinfo;
-    if (getLocalTime(&timeinfo)) {
-      strftime(openWeatherLastUpdatedTime, sizeof(openWeatherLastUpdatedTime), "%H:%M", &timeinfo);
-    }
+    lastWeatherUpdate = millis();
   } else {
-    Serial.println("cache");
+    Serial.println("cache weather");
     openWeather = openWeatherCache;
   }
 
-  const char* icon = (const char*)openWeather["weather"][0]["icon"];
+  const char* iconCode = (const char*)openWeather["weather"][0]["icon"];
   const char* message = (const char*)openWeather["weather"][0]["main"];
   double temperature = (double)openWeather["main"]["temp"];
   double feels = (double)openWeather["main"]["feels_like"];
   double wind_speed = (double)openWeather["wind"]["speed"];
   int humidity = (int)openWeather["main"]["humidity"];
 
-  if (strcmp(icon, "01d") == 0 || strcmp(icon, "01n") == 0) {
-    display.drawBitmap(0, 0, sunny, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
-  } else if (strcmp(icon, "02d") == 0 || strcmp(icon, "02n") == 0) {
-    display.drawBitmap(0, 0, sunny_cloudy, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
-  } else if (strcmp(icon, "03d") == 0 || strcmp(icon, "03n") == 0 || strcmp(icon, "04d") == 0 || strcmp(icon, "04n") == 0) {
-    display.drawBitmap(0, 0, cloudy, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);  
-  } else if (strcmp(icon, "09d") == 0 || strcmp(icon, "09n") == 0 || strcmp(icon, "10d") == 0 || strcmp(icon, "10n") == 0) {
-    display.drawBitmap(0, 0, rainy, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
-  } else if (strcmp(icon, "11d") == 0 || strcmp(icon, "11n") == 0) {
-    display.drawBitmap(0, 0, thunder, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
-  } else if (strcmp(icon, "13d") == 0 || strcmp(icon, "13n") == 0) {
-    display.drawBitmap(0, 0, snow, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
-  } else if (strcmp(icon, "50d") == 0 || strcmp(icon, "50n") == 0) {
-    display.drawBitmap(0, 0, wind, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
-  } else {
-    display.drawBitmap(0, 0, sunny, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
+  const unsigned char* iconBitmap = sunny;
+
+  if (strcmp(iconCode, "01d") == 0 || strcmp(iconCode, "01n") == 0) {
+    iconBitmap = sunny;
+  } else if (strcmp(iconCode, "02d") == 0 || strcmp(iconCode, "02n") == 0) {
+    iconBitmap = sunny_cloudy;
+  } else if (strcmp(iconCode, "03d") == 0 || strcmp(iconCode, "03n") == 0 
+      || strcmp(iconCode, "04d") == 0 || strcmp(iconCode, "04n") == 0) 
+  {
+    iconBitmap = cloudy;
+  } else if (strcmp(iconCode, "09d") == 0 || strcmp(iconCode, "09n") == 0 || strcmp(iconCode, "10d") == 0 || strcmp(iconCode, "10n") == 0) {
+    iconBitmap = rainy;
+  } else if (strcmp(iconCode, "11d") == 0 || strcmp(iconCode, "11n") == 0) {
+    iconBitmap = thunder;
+  } else if (strcmp(iconCode, "13d") == 0 || strcmp(iconCode, "13n") == 0) {
+    iconBitmap = snow;
+  } else if (strcmp(iconCode, "50d") == 0 || strcmp(iconCode, "50n") == 0) {
+    iconBitmap = wind;
   }
+
+  display.drawBitmap(0, 0, iconBitmap, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
 
   display.setTextSize(1);
   display.setCursor(40, 0);
@@ -231,7 +216,6 @@ void showWeather() {
   display.setTextSize(1);
   display.setCursor(0, 56);
 
-  // display.printf("Updated at %s", openWeatherLastUpdatedTime);
   display.display();
 }
 
@@ -332,7 +316,7 @@ bool wifiConnect(String ssid, String password) {
 
 void wifiConnect2() {
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   int retries = 0;
   addLog("Connecting to WIFI...");
@@ -460,8 +444,25 @@ void initAccessPoint() {
 
 void initTime() {
   addLog("Getting time...");
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  getTime();
+  configTime(0, 0, ntpServer);
+
+  setenv("TZ", "EET-2EEST,M3.5.0/3,M10.5.0/4", 1);
+  tzset();
+
+  struct tm timeinfo;
+  int retries = 0;
+  while (!getLocalTime(&timeinfo) && retries < 10) {
+    addLog("Waiting for NTP...");
+    delay(1000);
+    retries++;
+  }
+
+  if (retries == 10) {
+    addLog("Failed to get time");
+  } else {
+    addLog("Time updated!");
+    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+  }
 }
 
 void setup() {
@@ -488,57 +489,50 @@ void setup() {
   isAccessMode = false;
 }
 
-int i = 0;
-bool robotFirstTimeShow = false;
-
 void loop() {
   if(isAccessMode) {
     server.handleClient();
   } else {
-    if (i == 0) {
+    if (isFirstLoopIteration) {
       //init time
       initTime();
 
       if (buttonPressed == 0) {
         addLog("Getting weather...");
       }
+      isFirstLoopIteration = false;
     }
 
-    robotFirstTimeShow = false;
+    bool robotFirstTimeShow = false;
+    bool newState = digitalRead(BUTTON_PIN);
+    
+    if (newState == LOW && buttonState == LOW) {
+      Serial.printf("HOLD %d\n", millis() - lastButtonPress);
 
-    if (digitalRead(BUTTON_PIN) == LOW) {
-      if (buttonPressed <= 1) {
-        buttonPressed++;
-        if (buttonPressed == robotScreen) {
-          robotFirstTimeShow = true;
-        }
-      } else {
-        buttonPressed = 0;
+      if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
+          return setup();
       }
 
-      resetHoldCount++;
-    } else {
-      resetHoldCount = 0;
+      buttonHoldMillis = millis();
     }
 
-    if(resetHoldCount == resetHoldThreshold) {
-        return setup();
+    if (newState == LOW && buttonState == HIGH && millis() - lastButtonPress > 300) {
+      currentScreen = (currentScreen + 1) % 3;
+
+      if (buttonPressed == ROBOT_SCREEN) {
+          robotFirstTimeShow = true;
+      }
+
+      lastButtonPress = millis();
+      Serial.printf("Switched to screen %d\n", currentScreen + 1);
     }
 
-    if( buttonPressed <= 1 || robotFirstTimeShow) {
-      delay(loopDelayTime);
-    }
+    buttonState = newState;
 
-    switch(buttonPressed) {
-      case weatherScreen: 
-        showWeather();
-        break;
-      case clockScreen:
-        showTime();
-        break;
-      case robotScreen:
-        showRobot(robotFirstTimeShow);
-        break;
+    switch (currentScreen) {
+      case WEATHER_SCREEN: showWeather(); break;
+      case CLOCK_SCREEN: showTime(); break;
+      case ROBOT_SCREEN: showRobot(robotFirstTimeShow); break;
     }
 
     //   long r;
@@ -561,16 +555,6 @@ void loop() {
     //   }
 
     //   randomLoopCount++;
-
-  
-    if (i >= loopCacheWeather) {
-      clearWeatherCache();
-      i = 0;
-    }
-
-    if (buttonPressed != robotScreen) { //for robotScreen we do not have delay, so we do not need count loops
-        i++;
-    }
   }
  
 }
