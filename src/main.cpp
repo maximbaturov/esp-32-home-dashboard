@@ -29,9 +29,9 @@ const int randomLoopThreshold = 200;
 const int resetHoldThreshold = 20;
 
 //screens
-// const int weatherScreen = 1;
-// const int clockScreen = 2;
-// const int robotScreen = 3;
+const int weatherScreen = 0;
+const int clockScreen = 1;
+const int robotScreen = 2;
 
 //wifi
 const char* ssid     = WIFI_SSID;
@@ -40,13 +40,13 @@ bool isAccessMode = true;
 
 WebServer server(80);
 
-//time
+//time server
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3 * 3600;
 const int   daylightOffset_sec = 0;
 
-int loopDelayTime = 500;
-int loopCacheWeather = 120 * 5; //5min  
+int loopDelayTime = 100;
+int loopCacheWeather = 600 * 5; //5min  
 
 const char* openWeatherApiKey = OPEN_WEATHER_API_KEY;
 
@@ -62,7 +62,6 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 //robo eyes
 RoboEyes<Adafruit_SSD1306> roboEyes(display); 
-
 unsigned long eventTimer;
 bool event1wasPlayed = 0;
 bool event2wasPlayed = 0;
@@ -253,12 +252,7 @@ void showRobot(bool firstBoot) {
   // roboEyes.setHFlicker(ON, 2); // bool on/off, byte amplitude -> horizontal flicker: alternately displacing the eyes in the defined amplitude in pixels
   // roboEyes.setVFlicker(ON, 2); // bool on/off, byte amplitude -> vertical flicker: alternately displacing the eyes in the defined amplitude in pixels
 
-  // Play prebuilt oneshot animations
-  // roboEyes.anim_confused(); // confused - eyes shaking left and right
-  // roboEyes.anim_laugh(); // laughing - eyes shaking up and down
-
   // roboEyes.setPosition(DEFAULT); // eye position should be middle center
-  // roboEyes.close(); // start with closed eyes 
 
   roboEyes.update(); // update eyes drawings
 
@@ -268,6 +262,7 @@ void showRobot(bool firstBoot) {
     event1wasPlayed = 1; // flag variable to make sure the event will only be handled once
     roboEyes.open(); // open eyes 
   }
+
   // Do once after defined number of milliseconds
   if(millis() >= eventTimer+4000 && event2wasPlayed == 0){
     r = random(0, 3);
@@ -514,7 +509,7 @@ void loop() {
     if (digitalRead(BUTTON_PIN) == LOW) {
       if (buttonPressed <= 1) {
         buttonPressed++;
-        if (buttonPressed == 2) {
+        if (buttonPressed == robotScreen) {
           robotFirstTimeShow = true;
         }
       } else {
@@ -534,30 +529,18 @@ void loop() {
       delay(loopDelayTime);
     }
 
-    // switch(buttonPressed) {
-    //   case weatherScreen: 
-    //     showWeather();
-    //     break;
-    //   case clockScreen:
-    //     showTime();
-    //     break;
-    //   case robotScreen:
-    //     showRobot();
-    //     break;
-    //   default: 
-    //     showWeather();
-    //     break; 
-    // }
+    switch(buttonPressed) {
+      case weatherScreen: 
+        showWeather();
+        break;
+      case clockScreen:
+        showTime();
+        break;
+      case robotScreen:
+        showRobot(robotFirstTimeShow);
+        break;
+    }
 
-    if (buttonPressed == 0) {
-      showWeather();
-    } else if (buttonPressed == 1) {
-      showTime();
-    } else if (buttonPressed == 2) {
-      
-      showRobot(robotFirstTimeShow);
-    } 
-    // else if (buttonPressed == 3) {
     //   long r;
 
     //   if (lastRandom == 0 || randomLoopCount == randomLoopThreshold) {
@@ -578,15 +561,16 @@ void loop() {
     //   }
 
     //   randomLoopCount++;
-    // }
 
   
-    if (buttonPressed != 2 && i >= loopCacheWeather) {
+    if (i >= loopCacheWeather) {
       clearWeatherCache();
       i = 0;
     }
 
-    i++;
+    if (buttonPressed != robotScreen) { //for robotScreen we do not have delay, so we do not need count loops
+        i++;
+    }
   }
  
 }
