@@ -229,14 +229,14 @@ void showRobot(bool firstBoot) {
       roboEyes.setIdleMode(ON, 2, 2); // Start idle animation cycle (eyes looking in random directions) -> turn on/off, set interval between each eye repositioning in full seconds, set range for random time interval variation in full seconds
       eventTimer = millis(); // start event timer from here
   }
-roboEyes.update();
+  roboEyes.update();
   // roboEyes.setPosition(DEFAULT);
   roboEyes.open();
 
   // if(random(0, 2)) {
   //   roboEyes.setCuriosity(ON);
   // }
-roboEyes.setMood(HAPPY);
+  roboEyes.setMood(HAPPY);
   // r = random(0, 4);
 
   // if(r == 1) {
