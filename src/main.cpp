@@ -22,7 +22,6 @@ void initAccessPoint();
 bool isFirstLoopIteration = true;
 
 //button
-#define BUTTON_PIN 14 
 int buttonPressed  = 0;
 int buttonHoldMillis  = 0;
 const int RESET_HOLD_THRESHOLD = 15 * 1000; //15sec
@@ -298,7 +297,7 @@ bool wifiConnect(String ssid, String password) {
   
   while (WiFi.status() != WL_CONNECTED && retries < 20) {
     delay(500);
-    addLog("WIFI failed"); 
+    addLog("WIFI failed " + String(retries)); 
     retries++;
   }
 
@@ -314,7 +313,9 @@ bool wifiConnect(String ssid, String password) {
   return false;
 }
 
-void wifiConnect2() {
+void wifiConnectDebug() {
+  isAccessMode = false;
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
@@ -452,7 +453,7 @@ void initTime() {
   struct tm timeinfo;
   int retries = 0;
   while (!getLocalTime(&timeinfo) && retries < 10) {
-    addLog("Waiting for NTP...");
+    addLog("Waiting for NTP..." + String(retries));
     delay(1000);
     retries++;
   }
@@ -485,8 +486,7 @@ void setup() {
 
   //init wifi
   // initAccessPoint();
-  wifiConnect2();
-  isAccessMode = false;
+  wifiConnectDebug();
 }
 
 void loop() {
