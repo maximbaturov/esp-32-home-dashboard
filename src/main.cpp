@@ -8,8 +8,10 @@
 #include <Adafruit_SSD1306.h>
 #include "bmp.h"
 #include <FluxGarage_RoboEyes.h>
+#include <Preferences.h>
 
 void initAccessPoint();
+String saveSetting(String key, String value);
 
 //display
 #define SCREEN_WIDTH 128
@@ -48,6 +50,10 @@ int currentScreen = WEATHER_SCREEN;
 //wifi
 bool isAccessMode = true; 
 
+//storage
+Preferences preferences;
+
+//web server
 WebServer server(80);
 
 //time server
@@ -295,8 +301,8 @@ bool wifiConnect(String ssid, String password) {
   int retries = 0;
   addLog("Connecting to WIFI...");
   
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
-    delay(500);
+  while (WiFi.status() != WL_CONNECTED && retries < 15) {
+    delay(1000);
     addLog("WIFI failed " + String(retries)); 
     retries++;
   }
@@ -336,17 +342,16 @@ void wifiConnectDebug() {
 }
 
 void httpIndex() {
-if (server.hasArg("name") && server.hasArg("password")) {
-    String name = server.arg("name");
+if (server.hasArg("ssid") && server.hasArg("password")) {
+    String ssid = server.arg("ssid");
     String password = server.arg("password");
 
-    addLog("Name: ");
-    addLog(name);
+    addLog("Connecting to " + ssid);
 
-    addLog("Password: ");
-    addLog(password);
-
-    if(!wifiConnect(name, password)) {
+    if (wifiConnect(ssid, password)) {
+      saveSetting("ssid", ssid);
+      saveSetting("password", password);
+    } else {
       initAccessPoint();
     }
   } else {
@@ -407,7 +412,7 @@ if (server.hasArg("name") && server.hasArg("password")) {
           <h1>PopBot 🤖</h1>
           <h5>WiFi налаштування</h1>
           <form method="POST" action="/">
-            <div class="form-control"><input name="name" type="text" placeholder="ім'я" required></div>
+            <div class="form-control"><input name="ssid" type="text" placeholder="назва мережі" required></div>
             <div class="form-control"><input name="password" type="text" placeholder="пароль" required></div>
             <div class="form-control"><input type="submit" value="Send"></div>
           </form>
@@ -466,6 +471,29 @@ void initTime() {
   }
 }
 
+String getWifiSsid() {
+  String ssid = "";
+
+  preferences.begin("settings", false);
+  return preferences.getString("ssid", "");
+}
+
+String getWifiPassword() {
+  String password = "";
+
+  preferences.begin("settings", false);
+  return preferences.getString("password", "");
+}
+
+String saveSetting(String key, String value) {
+  preferences.begin("settings", true);
+  preferences.putString(key.c_str(), value);
+
+  addLog("saved :");
+  addLog(preferences.getString(key.c_str(), ""));
+  return preferences.getString(key.c_str(), "");
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -485,8 +513,17 @@ void setup() {
   addLog("PopBot wakes up");
 
   //init wifi
-  // initAccessPoint();
-  wifiConnectDebug();
+  String ssid = getWifiSsid();
+  String password = getWifiPassword();
+
+  Serial.println(ssid);
+  Serial.println(password);
+
+  if(ssid != "" && password != "") {
+    wifiConnect(ssid, password);
+  } else {
+    initAccessPoint();
+  }
 }
 
 void loop() {
