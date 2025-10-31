@@ -30,7 +30,6 @@ const int RESET_HOLD_THRESHOLD = 15 * 1000; //15sec
 // int randomLoopCount = 0;
 // const int randomLoopThreshold = 200;
 
-
 bool buttonState = HIGH;
 unsigned long lastButtonPress = 0;
 
@@ -167,7 +166,6 @@ void showWeather() {
     openWeather = openWeatherCache;
     lastWeatherUpdate = millis();
   } else {
-    Serial.println("cache weather");
     openWeather = openWeatherCache;
   }
 
@@ -315,28 +313,6 @@ bool wifiConnect(String ssid, String password) {
   }
 
   return false;
-}
-
-void wifiConnectDebug() {
-  isAccessMode = false;
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  int retries = 0;
-  addLog("Connecting to WIFI...");
-  
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
-    delay(500);
-    addLog("WIFI failed"); 
-    retries++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    addLog("WIFI connected");
-    addLog("Local IP:");
-    addLog(WiFi.localIP().toString());
-  }
 }
 
 void httpIndex() {
@@ -511,13 +487,17 @@ void setup() {
   addLog("PopBot wakes up");
 
   //init wifi
-  String ssid = getSetting("ssid");
-  String password = getSetting("password");
-
-  if(ssid != "" && password != "") {
-    wifiConnect(ssid, password);
+  if (DEV_WIFI == 1) {
+    wifiConnect(WIFI_SSID, WIFI_PASS);
   } else {
-    initAccessPoint();
+    String ssid = getSetting("ssid");
+    String password = getSetting("password");
+
+    if(ssid != "" && password != "") {
+      wifiConnect(ssid, password);
+    } else {
+      initAccessPoint();
+    }
   }
 }
 
