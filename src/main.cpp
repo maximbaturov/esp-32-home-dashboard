@@ -11,13 +11,11 @@
 #include <Preferences.h>
 
 void initAccessPoint();
-String saveSetting(String key, String value);
+void saveSetting(const char* key, String value);
 
 //display
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define SDA_PIN 21
-#define SCL_PIN 19
 #define OLED_ADDR 0x3C
 #define OLED_RESET -1
 
@@ -346,6 +344,8 @@ if (server.hasArg("ssid") && server.hasArg("password")) {
     String ssid = server.arg("ssid");
     String password = server.arg("password");
 
+    server.send(200, "text/html", "");
+
     addLog("Connecting to " + ssid);
 
     if (wifiConnect(ssid, password)) {
@@ -471,27 +471,25 @@ void initTime() {
   }
 }
 
-String getWifiSsid() {
-  String ssid = "";
-
-  preferences.begin("settings", false);
-  return preferences.getString("ssid", "");
+void removeSettings() {
+  preferences.begin("settings", false); 
+  preferences.clear();
+  preferences.end();
 }
 
-String getWifiPassword() {
-  String password = "";
-
-  preferences.begin("settings", false);
-  return preferences.getString("password", "");
-}
-
-String saveSetting(String key, String value) {
+String getSetting(const char* key) {
+  String value = "";
   preferences.begin("settings", true);
-  preferences.putString(key.c_str(), value);
+  value = preferences.getString(key, "");
+  preferences.end();
 
-  addLog("saved :");
-  addLog(preferences.getString(key.c_str(), ""));
-  return preferences.getString(key.c_str(), "");
+  return value;
+}
+
+void saveSetting(const char* key, String value) {
+  preferences.begin("settings", false);
+  preferences.putString(key, value);
+  preferences.end();
 }
 
 void setup() {
@@ -513,11 +511,8 @@ void setup() {
   addLog("PopBot wakes up");
 
   //init wifi
-  String ssid = getWifiSsid();
-  String password = getWifiPassword();
-
-  Serial.println(ssid);
-  Serial.println(password);
+  String ssid = getSetting("ssid");
+  String password = getSetting("password");
 
   if(ssid != "" && password != "") {
     wifiConnect(ssid, password);
@@ -547,6 +542,7 @@ void loop() {
       Serial.printf("HOLD %d\n", millis() - lastButtonPress);
 
       if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
+          removeSettings();
           return setup();
       }
 
