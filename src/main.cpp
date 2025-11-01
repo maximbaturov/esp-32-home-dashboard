@@ -1,9 +1,7 @@
 #include <Arduino.h>
 #include <Arduino_JSON.h>
 #include <Wire.h>
-
 #include <HTTPClient.h>
-#include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
 #include "resources/icons.h"
@@ -20,7 +18,10 @@
 #define OLED_RESET -1
 
 void initTime();
-bool isFirstLoopIteration = true;
+void showTime();
+JSONVar getWeather();
+void showWeather();
+void showRobot(bool firstBoot);
 
 //button
 const int RESET_HOLD_THRESHOLD = 15 * 1000; //15sec
@@ -312,22 +313,20 @@ void setup() {
       http.start();
     }
   }
+
+  if (wifi.isClientMode()) {
+    initTime();
+
+    if (buttonPressed == WEATHER_SCREEN) {
+      screen.addMessage("Getting weather...");
+    }
+  }
 }
 
 void loop() {
   if(wifi.isAccesPointMode()) {
     http.handleClient();
   } else {
-    if (isFirstLoopIteration) {
-      initTime();
-
-      if (buttonPressed == 0) {
-        screen.addMessage("Getting weather...");
-      }
-      
-      isFirstLoopIteration = false;
-    }
-
     bool robotFirstTimeShow = false;
     bool newState = digitalRead(BUTTON_PIN);
     

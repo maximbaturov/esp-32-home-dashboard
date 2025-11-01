@@ -7,6 +7,7 @@ public:
     WiFiManager(DisplayManager& display);
     bool connect(String ssid, String password);
     bool isAccesPointMode();
+    bool isClientMode();
     void initAccessPoint();
 private:
     DisplayManager& display;

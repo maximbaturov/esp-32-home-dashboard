@@ -48,3 +48,7 @@ void WiFiManager::initAccessPoint() {
 bool WiFiManager::isAccesPointMode() {
   return WiFi.getMode() == WIFI_AP;
 }
+
+bool WiFiManager::isClientMode() {
+  return WiFi.getMode() == WIFI_STA;
+}
