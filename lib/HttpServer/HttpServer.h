@@ -9,6 +9,7 @@ public:
     HttpServer(DisplayManager& screen, WiFiManager& wifi, Storage& storage);
     void start();
     void handleClient();
+    void stop();
 
 private:
     void indexPage();  // handler

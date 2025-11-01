@@ -44,3 +44,7 @@ void WiFiManager::initAccessPoint() {
   display.addMessage("IP Address:");
   display.addMessage(ip.toString());
 }
+
+bool WiFiManager::isAccesPointMode() {
+  return WiFi.getMode() == WIFI_AP;
+}

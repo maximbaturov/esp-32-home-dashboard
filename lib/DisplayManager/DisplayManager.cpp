@@ -33,7 +33,7 @@ void DisplayManager::addMessage(const String &msg) {
 
   display.display();
 
-  if(Serial) {
+  if (Serial) {
     Serial.println(msg);
   }
 }

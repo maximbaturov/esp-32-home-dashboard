@@ -4,16 +4,18 @@ HttpServer::HttpServer(DisplayManager& screen, WiFiManager& wifi, Storage& stora
     : server(80), screen(screen), wifi(wifi), storage(storage) {}
 
 void HttpServer::start() {
-    // Register route
-    server.on("/", [this]() { indexPage(); });
+  server.on("/", [this]() { indexPage(); });
+  server.begin();
+  
+  screen.addMessage("HTTP server started");
+}
 
-    // Start server
-    server.begin();
-    screen.addMessage("HTTP server started");
+void HttpServer::stop() {
+  server.close();
 }
 
 void HttpServer::handleClient() {
-    server.handleClient();
+  server.handleClient();
 }
 
 void HttpServer::indexPage() {
