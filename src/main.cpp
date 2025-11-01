@@ -6,9 +6,11 @@
 #include <HTTPClient.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include "bmp.h"
-#include <FluxGarage_RoboEyes.h>
-#include <Preferences.h>
+
+#include "resources/icons.h"
+#include "FluxGarage_RoboEyes.h"
+#include "lib/storage.h"
+
 
 void initAccessPoint();
 void saveSetting(const char* key, String value);
@@ -47,9 +49,6 @@ int currentScreen = WEATHER_SCREEN;
 //wifi
 bool isAccessMode = true; 
 
-//storage
-Preferences preferences;
-
 //web server
 WebServer server(80);
 
@@ -72,7 +71,7 @@ bool event1wasPlayed = 0;
 bool event2wasPlayed = 0;
 bool event3wasPlayed = 0;
 
-void addLog(const String &msg) {
+void log(const String &msg) {
   if (logCount >= MAX_LOG_LINES) {
     for (int i = 1; i < MAX_LOG_LINES; i++) {
       logLines[i - 1] = logLines[i];
@@ -295,18 +294,18 @@ bool wifiConnect(String ssid, String password) {
   WiFi.begin(ssid, password);
 
   int retries = 0;
-  addLog("Connecting to WIFI...");
+  log("Connecting to WIFI...");
   
   while (WiFi.status() != WL_CONNECTED && retries < 15) {
     delay(1000);
-    addLog("WIFI failed " + String(retries)); 
+    log("WIFI failed " + String(retries)); 
     retries++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    addLog("WIFI connected");
-    addLog("Local IP:");
-    addLog(WiFi.localIP().toString());
+    log("WIFI connected");
+    log("Local IP:");
+    log(WiFi.localIP().toString());
 
     isAccessMode = false;
     return true;
@@ -322,7 +321,7 @@ if (server.hasArg("ssid") && server.hasArg("password")) {
 
     server.send(200, "text/html", "");
 
-    addLog("Connecting to " + ssid);
+    log("Connecting to " + ssid);
 
     if (wifiConnect(ssid, password)) {
       saveSetting("ssid", ssid);
@@ -408,24 +407,24 @@ void initAccessPoint() {
   WiFi.softAP(sid, "");
 
   IPAddress ip = WiFi.softAPIP();
-  addLog("Access Point started");
+  log("Access Point started");
 
   char msg[64];
   snprintf(msg, sizeof(msg), "WiFi: %s", sid);
-  addLog(msg);
+  log(msg);
 
-  addLog("IP Address:");
-  addLog(ip.toString());
+  log("IP Address:");
+  log(ip.toString());
 
   server.on("/", httpIndex);
   server.begin();
-  addLog("Server started");
+  log("Server started");
 
   isAccessMode = true;
 }
 
 void initTime() {
-  addLog("Getting time...");
+  log("Getting time...");
   configTime(0, 0, ntpServer);
 
   setenv("TZ", "EET-2EEST,M3.5.0/3,M10.5.0/4", 1);
@@ -434,39 +433,20 @@ void initTime() {
   struct tm timeinfo;
   int retries = 0;
   while (!getLocalTime(&timeinfo) && retries < 10) {
-    addLog("Waiting for NTP..." + String(retries));
+    log("Waiting for NTP..." + String(retries));
     delay(1000);
     retries++;
   }
 
   if (retries == 10) {
-    addLog("Failed to get time");
+    log("Failed to get time");
   } else {
-    addLog("Time updated!");
+    log("Time updated!");
     Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
   }
 }
 
-void removeSettings() {
-  preferences.begin("settings", false); 
-  preferences.clear();
-  preferences.end();
-}
 
-String getSetting(const char* key) {
-  String value = "";
-  preferences.begin("settings", true);
-  value = preferences.getString(key, "");
-  preferences.end();
-
-  return value;
-}
-
-void saveSetting(const char* key, String value) {
-  preferences.begin("settings", false);
-  preferences.putString(key, value);
-  preferences.end();
-}
 
 void setup() {
   Serial.begin(115200);
@@ -484,7 +464,7 @@ void setup() {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
-  addLog("PopBot wakes up");
+  log("PopBot wakes up");
 
   //init wifi
   if (DEV_WIFI == 1) {
@@ -510,7 +490,7 @@ void loop() {
       initTime();
 
       if (buttonPressed == 0) {
-        addLog("Getting weather...");
+        log("Getting weather...");
       }
       isFirstLoopIteration = false;
     }
