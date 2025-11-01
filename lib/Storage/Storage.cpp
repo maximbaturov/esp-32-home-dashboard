@@ -1,16 +1,16 @@
 #include "Storage.h"
 
-Preferences preferences;
+Storage::Storage(const char* ns) : nsName(ns) {}
 
 void Storage::removeAll() {
-  preferences.begin("settings", false); 
+  preferences.begin(nsName, false); 
   preferences.clear();
   preferences.end();
 }
 
 String Storage::get(const char* key) {
   String value = "";
-  preferences.begin("settings", true);
+  preferences.begin(nsName, true);
   value = preferences.getString(key, "");
   preferences.end();
 
@@ -18,7 +18,7 @@ String Storage::get(const char* key) {
 }
 
 void Storage::save(const char* key, String value) {
-  preferences.begin("settings", false);
+  preferences.begin(nsName, false);
   preferences.putString(key, value);
   preferences.end();
 }

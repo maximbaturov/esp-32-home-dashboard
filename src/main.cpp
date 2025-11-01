@@ -1,8 +1,7 @@
 #include <Arduino.h>
 #include <Arduino_JSON.h>
 #include <Wire.h>
-#include <WiFi.h>
-#include <WebServer.h>
+
 #include <HTTPClient.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -12,8 +11,8 @@
 #include "DisplayManager.h"
 #include "Storage.h"
 #include "WiFiManager.h"
+#include "HttpServer.h"
 
-void initAccessPoint();
 
 //display
 #define SCREEN_WIDTH 128
@@ -49,9 +48,6 @@ int currentScreen = WEATHER_SCREEN;
 //wifi
 bool isAccessMode = true; 
 
-//web server
-WebServer server(80);
-
 //time server
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3 * 3600;
@@ -60,14 +56,13 @@ const int   daylightOffset_sec = 0;
 //storage
 Storage settings;
 
-//log
-#define MAX_LOG_LINES 6
-String logLines[MAX_LOG_LINES];
-int logCount = 0;
 
 // Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 DisplayManager screen(SCREEN_WIDTH, SCREEN_HEIGHT, OLED_RESET);
+
 WiFiManager wifi(screen);
+
+HttpServer http(screen, wifi, settings);
 
 //robo eyes
 RoboEyes<Adafruit_SSD1306> roboEyes(screen.getDisplay()); 
@@ -75,27 +70,6 @@ RoboEyes<Adafruit_SSD1306> roboEyes(screen.getDisplay());
 // bool event1wasPlayed = 0;
 // bool event2wasPlayed = 0;
 // bool event3wasPlayed = 0;
-
-// void log(const String &msg) {
-//   if (logCount >= MAX_LOG_LINES) {
-//     for (int i = 1; i < MAX_LOG_LINES; i++) {
-//       logLines[i - 1] = logLines[i];
-//     }
-//     logLines[MAX_LOG_LINES - 1] = msg;
-//   } else {
-//     logLines[logCount++] = msg;
-//   }
-
-//   display.clearDisplay();
-//   display.setTextSize(1);
-//   display.setTextColor(SSD1306_WHITE);
-//   for (int i = 0; i < logCount; i++) {
-//     display.setCursor(0, i * 10);
-//     display.print(logLines[i]);
-//   }
-//   display.display();
-//   Serial.println(msg);
-// }
 
 // void showTime() {
 //   struct tm timeinfo;
@@ -478,7 +452,7 @@ void setup() {
       wifi.connect(ssid, password);
     } else {
       wifi.initAccessPoint();
-
+      
       //start server
       // server.on("/", httpIndex);
       // server.begin();
