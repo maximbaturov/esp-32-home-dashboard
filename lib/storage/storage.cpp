@@ -2,13 +2,13 @@
 
 Preferences preferences;
 
-void removeSettings() {
+void Storage::removeAll() {
   preferences.begin("settings", false); 
   preferences.clear();
   preferences.end();
 }
 
-String getSetting(const char* key) {
+String Storage::get(const char* key) {
   String value = "";
   preferences.begin("settings", true);
   value = preferences.getString(key, "");
@@ -17,7 +17,7 @@ String getSetting(const char* key) {
   return value;
 }
 
-void saveSetting(const char* key, String value) {
+void Storage::save(const char* key, String value) {
   preferences.begin("settings", false);
   preferences.putString(key, value);
   preferences.end();

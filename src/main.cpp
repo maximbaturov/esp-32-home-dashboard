@@ -9,11 +9,9 @@
 
 #include "resources/icons.h"
 #include "FluxGarage_RoboEyes.h"
-#include "lib/storage.h"
-
+#include "storage.h"
 
 void initAccessPoint();
-void saveSetting(const char* key, String value);
 
 //display
 #define SCREEN_WIDTH 128
@@ -56,6 +54,9 @@ WebServer server(80);
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3 * 3600;
 const int   daylightOffset_sec = 0;
+
+//storage
+Storage settings;
 
 //log
 #define MAX_LOG_LINES 6
@@ -324,8 +325,8 @@ if (server.hasArg("ssid") && server.hasArg("password")) {
     log("Connecting to " + ssid);
 
     if (wifiConnect(ssid, password)) {
-      saveSetting("ssid", ssid);
-      saveSetting("password", password);
+      settings.save("ssid", ssid);
+      settings.save("password", password);
     } else {
       initAccessPoint();
     }
@@ -468,8 +469,8 @@ void setup() {
   if (DEV_WIFI == 1) {
     wifiConnect(WIFI_SSID, WIFI_PASS);
   } else {
-    String ssid = getSetting("ssid");
-    String password = getSetting("password");
+    String ssid = settings.get("ssid");
+    String password = settings.get("password");
 
     if(ssid != "" && password != "") {
       wifiConnect(ssid, password);
@@ -500,7 +501,7 @@ void loop() {
       Serial.printf("HOLD %d\n", millis() - lastButtonPress);
 
       if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
-          removeSettings();
+          settings.removeAll();
           return setup();
       }
 
