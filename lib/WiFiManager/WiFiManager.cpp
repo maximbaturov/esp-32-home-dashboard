@@ -1,7 +1,6 @@
 #include "WiFiManager.h"
 
-WiFiManager::WiFiManager(DisplayManager& displayRef)
-    : display(displayRef) {}
+WiFiManager::WiFiManager(DisplayManager &displayRef) : display(displayRef) {}
 
 bool WiFiManager::connect(String ssid, String password) {
   WiFi.softAPdisconnect(true);
@@ -10,10 +9,10 @@ bool WiFiManager::connect(String ssid, String password) {
 
   int retries = 0;
   display.addMessage("Connecting to WIFI...");
-  
+
   while (WiFi.status() != WL_CONNECTED && retries < 15) {
     delay(1000);
-    display.addMessage("WIFI failed " + String(retries)); 
+    display.addMessage("WIFI failed " + String(retries));
     retries++;
   }
 
@@ -45,10 +44,6 @@ void WiFiManager::initAccessPoint() {
   display.addMessage(ip.toString());
 }
 
-bool WiFiManager::isAccesPointMode() {
-  return WiFi.getMode() == WIFI_AP;
-}
+bool WiFiManager::isAccesPointMode() { return WiFi.getMode() == WIFI_AP; }
 
-bool WiFiManager::isClientMode() {
-  return WiFi.getMode() == WIFI_STA;
-}
+bool WiFiManager::isClientMode() { return WiFi.getMode() == WIFI_STA; }

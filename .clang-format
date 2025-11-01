@@ -1,0 +1,5 @@
+Language: Cpp
+ColumnLimit: 150
+IndentPPDirectives: None
+MacroBlockBegin: Without
+AlignConsecutiveMacros: AcrossEmptyLinesAndComments

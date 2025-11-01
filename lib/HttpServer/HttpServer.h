@@ -1,21 +1,21 @@
 #pragma once
-#include <WebServer.h>
 #include "DisplayManager.h"
-#include "WiFiManager.h"
 #include "Storage.h"
+#include "WiFiManager.h"
+#include <WebServer.h>
 
 class HttpServer {
 public:
-    HttpServer(DisplayManager& screen, WiFiManager& wifi, Storage& storage);
-    void start();
-    void handleClient();
-    void stop();
+  HttpServer(DisplayManager &screen, WiFiManager &wifi, Storage &storage);
+  void start();
+  void handleClient();
+  void stop();
 
 private:
-    void indexPage();  // handler
+  void indexPage(); // handler
 
-    WebServer server;
-    DisplayManager& screen;
-    WiFiManager& wifi;
-    Storage& storage;
+  WebServer server;
+  DisplayManager &screen;
+  WiFiManager &wifi;
+  Storage &storage;
 };

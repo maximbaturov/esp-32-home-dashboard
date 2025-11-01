@@ -1,21 +1,21 @@
+#include <Adafruit_SSD1306.h>
 #include <Arduino.h>
 #include <Arduino_JSON.h>
-#include <Wire.h>
 #include <HTTPClient.h>
-#include <Adafruit_SSD1306.h>
+#include <Wire.h>
 
-#include "resources/icons.h"
-#include "FluxGarage_RoboEyes.h"
 #include "DisplayManager.h"
+#include "FluxGarage_RoboEyes.h"
+#include "HttpServer.h"
 #include "Storage.h"
 #include "WiFiManager.h"
-#include "HttpServer.h"
+#include "resources/icons.h"
 
-//display
-#define SCREEN_WIDTH 128
+// display
+#define SCREEN_WIDTH  128
 #define SCREEN_HEIGHT 64
-#define OLED_ADDR 0x3C
-#define OLED_RESET -1
+#define OLED_ADDR     0x3C
+#define OLED_RESET    -1
 
 void initTime();
 void showTime();
@@ -23,30 +23,30 @@ JSONVar getWeather();
 void showWeather();
 void showRobot(bool firstBoot);
 
-//button
-const int RESET_HOLD_THRESHOLD = 15 * 1000; //15sec
-int buttonPressed  = 0;
-int buttonHoldMillis  = 0;
+// button
+const int RESET_HOLD_THRESHOLD = 15 * 1000; // 15sec
+int buttonPressed = 0;
+int buttonHoldMillis = 0;
 bool buttonState = HIGH;
 unsigned long lastButtonPress = 0;
 
-//weather
+// weather
 JSONVar openWeatherCache;
-const unsigned long WEATHER_CACHE_TIMEOUT = 5 * 60 * 1000; //5min
+const unsigned long WEATHER_CACHE_TIMEOUT = 5 * 60 * 1000; // 5min
 unsigned long lastWeatherUpdate = 0;
 
-//screens
+// screens
 const int WEATHER_SCREEN = 0;
 const int CLOCK_SCREEN = 1;
 const int ROBOT_SCREEN = 2;
 int currentScreen = WEATHER_SCREEN;
 
-//time server
-const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3 * 3600;
-const int   daylightOffset_sec = 0;
+// time server
+const char *ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 3 * 3600;
+const int daylightOffset_sec = 0;
 
-//storage
+// storage
 Storage settings;
 
 // Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -56,8 +56,8 @@ WiFiManager wifi(screen);
 
 HttpServer http(screen, wifi, settings);
 
-//robo eyes
-RoboEyes<Adafruit_SSD1306> roboEyes(screen.getDisplay()); 
+// robo eyes
+RoboEyes<Adafruit_SSD1306> roboEyes(screen.getDisplay());
 unsigned long eventTimer;
 bool event1wasPlayed = 0;
 bool event2wasPlayed = 0;
@@ -65,24 +65,24 @@ bool event3wasPlayed = 0;
 
 void showTime() {
   struct tm timeinfo;
-  Adafruit_SSD1306& display = screen.getDisplay();
-  
+  Adafruit_SSD1306 &display = screen.getDisplay();
+
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
 
   if (getLocalTime(&timeinfo)) {
-      char buffer[16];
-      strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
-      
-      display.setTextSize(4);
-      display.setCursor(0, 0);
-      display.println(buffer);
+    char buffer[16];
+    strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
 
-      strftime(buffer, sizeof(buffer), "%d-%m-%Y", &timeinfo);
-      display.setTextSize(2);
-      display.setCursor(0, 48);
-      display.println(buffer);
+    display.setTextSize(4);
+    display.setCursor(0, 0);
+    display.println(buffer);
+
+    strftime(buffer, sizeof(buffer), "%d-%m-%Y", &timeinfo);
+    display.setTextSize(2);
+    display.setCursor(0, 48);
+    display.println(buffer);
   } else {
     display.setTextSize(1);
     display.setCursor(10, 10);
@@ -96,8 +96,9 @@ JSONVar getWeather() {
   HTTPClient http;
 
   String response = "{}";
-  String url = "https://api.openweathermap.org/data/2.5/weather?lat=49.83935806420136&lon=24.02160867276371&appid={OPEN_WEATHER_API_KEY}&units=metric";
-  
+  String url =
+      "https://api.openweathermap.org/data/2.5/weather?lat=49.83935806420136&lon=24.02160867276371&appid={OPEN_WEATHER_API_KEY}&units=metric";
+
   url.replace("{OPEN_WEATHER_API_KEY}", OPEN_WEATHER_API_KEY);
 
   http.begin(url.c_str());
@@ -107,31 +108,31 @@ JSONVar getWeather() {
   if (httpResponseCode != 200) {
     Serial.print("Error code: ");
     Serial.println(httpResponseCode);
-    
+
     return JSON.parse("{}");
   }
 
   JSONVar openWeather = JSON.parse(http.getString());
-  
+
   http.end();
 
   if (JSON.typeof(openWeather) == "undefined") {
     Serial.println("Parsing input failed!");
     return JSON.parse("{}");
   }
-  
+
   return openWeather;
 }
 
 void showWeather() {
   JSONVar openWeather;
   unsigned long now = millis();
-  Adafruit_SSD1306& display = screen.getDisplay();
+  Adafruit_SSD1306 &display = screen.getDisplay();
 
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
-  
+
   if (openWeatherCache == JSONVar() || now - lastWeatherUpdate > WEATHER_CACHE_TIMEOUT) {
     Serial.println("request weather");
     openWeatherCache = getWeather();
@@ -141,22 +142,20 @@ void showWeather() {
     openWeather = openWeatherCache;
   }
 
-  const char* iconCode = (const char*)openWeather["weather"][0]["icon"];
-  const char* message = (const char*)openWeather["weather"][0]["main"];
+  const char *iconCode = (const char *)openWeather["weather"][0]["icon"];
+  const char *message = (const char *)openWeather["weather"][0]["main"];
   double temperature = (double)openWeather["main"]["temp"];
   double feels = (double)openWeather["main"]["feels_like"];
   double wind_speed = (double)openWeather["wind"]["speed"];
   int humidity = (int)openWeather["main"]["humidity"];
 
-  const unsigned char* iconBitmap = sunny;
+  const unsigned char *iconBitmap = sunny;
 
   if (strcmp(iconCode, "01d") == 0 || strcmp(iconCode, "01n") == 0) {
     iconBitmap = sunny;
   } else if (strcmp(iconCode, "02d") == 0 || strcmp(iconCode, "02n") == 0) {
     iconBitmap = sunny_cloudy;
-  } else if (strcmp(iconCode, "03d") == 0 || strcmp(iconCode, "03n") == 0 
-      || strcmp(iconCode, "04d") == 0 || strcmp(iconCode, "04n") == 0) 
-  {
+  } else if (strcmp(iconCode, "03d") == 0 || strcmp(iconCode, "03n") == 0 || strcmp(iconCode, "04d") == 0 || strcmp(iconCode, "04n") == 0) {
     iconBitmap = cloudy;
   } else if (strcmp(iconCode, "09d") == 0 || strcmp(iconCode, "09n") == 0 || strcmp(iconCode, "10d") == 0 || strcmp(iconCode, "10n") == 0) {
     iconBitmap = rainy;
@@ -168,7 +167,7 @@ void showWeather() {
     iconBitmap = wind;
   }
 
-  display.drawBitmap(0, 0, iconBitmap, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
+  display.drawBitmap(0, 0, iconBitmap, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2, SSD1306_WHITE);
 
   display.setTextSize(1);
   display.setCursor(40, 0);
@@ -195,19 +194,22 @@ void showWeather() {
 void showRobot(bool firstBoot) {
   long r;
 
-  if(firstBoot) {
-      // Startup robo eyes
-      roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 100); // screen-width, screen-height, max framerate - 60-100fps are good for smooth animations
-      roboEyes.setAutoblinker(ON, 3, 2); // Start auto blinker animation cycle -> bool active, int interval, int variation -> turn on/off, set interval between each blink in full seconds, set range for random interval variation in full seconds
-      roboEyes.setIdleMode(ON, 2, 2); // Start idle animation cycle (eyes looking in random directions) -> turn on/off, set interval between each eye repositioning in full seconds, set range for random time interval variation in full seconds
-      
-      eventTimer = millis(); // start event timer from here
+  if (firstBoot) {
+    // Startup robo eyes
+    roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 100); // screen-width, screen-height, max framerate - 60-100fps are good for smooth animations
+    roboEyes.setAutoblinker(ON, 3, 2); // Start auto blinker animation cycle -> bool active, int interval, int variation -> turn on/off, set interval
+                                       // between each blink in full seconds, set range for random interval variation in full seconds
+    roboEyes.setIdleMode(ON, 2, 2);    // Start idle animation cycle (eyes looking in random directions) -> turn on/off, set interval between each eye
+                                       // repositioning in full seconds, set range for random time interval variation in full seconds
+
+    eventTimer = millis(); // start event timer from here
   }
   // roboEyes.setCuriosity(ON); // bool on/off -> when turned on, height of the outer eyes increases when moving to the very left or very right
 
   // Set horizontal or vertical flickering
-  // roboEyes.setHFlicker(ON, 2); // bool on/off, byte amplitude -> horizontal flicker: alternately displacing the eyes in the defined amplitude in pixels
-  // roboEyes.setVFlicker(ON, 2); // bool on/off, byte amplitude -> vertical flicker: alternately displacing the eyes in the defined amplitude in pixels
+  // roboEyes.setHFlicker(ON, 2); // bool on/off, byte amplitude -> horizontal flicker: alternately displacing the eyes in the defined amplitude in
+  // pixels roboEyes.setVFlicker(ON, 2); // bool on/off, byte amplitude -> vertical flicker: alternately displacing the eyes in the defined amplitude
+  // in pixels
 
   // roboEyes.setPosition(DEFAULT); // eye position should be middle center
 
@@ -215,18 +217,18 @@ void showRobot(bool firstBoot) {
 
   // LOOPED ANIMATION SEQUENCE
   // Do once after defined number of milliseconds
-  if(millis() >= eventTimer+2000 && event1wasPlayed == 0){
+  if (millis() >= eventTimer + 2000 && event1wasPlayed == 0) {
     event1wasPlayed = 1; // flag variable to make sure the event will only be handled once
-    roboEyes.open(); // open eyes 
+    roboEyes.open();     // open eyes
   }
 
   // Do once after defined number of milliseconds
-  if(millis() >= eventTimer+4000 && event2wasPlayed == 0){
+  if (millis() >= eventTimer + 4000 && event2wasPlayed == 0) {
     r = random(0, 3);
     event2wasPlayed = 1; // flag variable to make sure the event will only be handled once
     roboEyes.setMood(HAPPY);
-    
-    if(r == 1) {
+
+    if (r == 1) {
       roboEyes.anim_laugh();
     }
 
@@ -235,13 +237,13 @@ void showRobot(bool firstBoot) {
     }
   }
   // Do once after defined number of milliseconds
-  if(millis() >= eventTimer+6000 && event3wasPlayed == 0){
+  if (millis() >= eventTimer + 6000 && event3wasPlayed == 0) {
     event3wasPlayed = 1; // flag variable to make sure the event will only be handled once
 
     if (random(0, 2)) {
-       roboEyes.setMood(TIRED);
+      roboEyes.setMood(TIRED);
     } else {
-       roboEyes.setMood(ANGRY);
+      roboEyes.setMood(ANGRY);
     }
 
     if (random(0, 2)) {
@@ -249,12 +251,12 @@ void showRobot(bool firstBoot) {
     }
   }
   // Do once after defined number of milliseconds, then reset timer and flags to restart the whole animation sequence
-  if(millis() >= eventTimer+8000){
+  if (millis() >= eventTimer + 8000) {
     roboEyes.close(); // close eyes again
     roboEyes.setMood(DEFAULT);
     // Reset the timer and the event flags to restart the whole "complex animation loop"
     eventTimer = millis(); // reset timer
-    event1wasPlayed = 0; // reset flags
+    event1wasPlayed = 0;   // reset flags
     event2wasPlayed = 0;
     event3wasPlayed = 0;
   }
@@ -289,15 +291,15 @@ void setup() {
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  //init display
+  // init display
   Wire.begin(SDA_PIN, SCL_PIN);
 
   if (!screen.begin(OLED_ADDR)) {
     Serial.println("Display init failed!");
   }
-  
+
   screen.clear();
-  screen.addMessage("PopBot wakes up");  
+  screen.addMessage("PopBot wakes up");
 
   // //init wifi
   if (DEV_WIFI == 1) {
@@ -306,7 +308,7 @@ void setup() {
     String ssid = settings.get("ssid");
     String password = settings.get("password");
 
-    if(ssid != "" && password != "") {
+    if (ssid != "" && password != "") {
       wifi.connect(ssid, password);
     } else {
       wifi.initAccessPoint();
@@ -324,18 +326,18 @@ void setup() {
 }
 
 void loop() {
-  if(wifi.isAccesPointMode()) {
+  if (wifi.isAccesPointMode()) {
     http.handleClient();
   } else {
     bool robotFirstTimeShow = false;
     bool newState = digitalRead(BUTTON_PIN);
-    
+
     if (newState == LOW && buttonState == LOW) {
       Serial.printf("HOLD %d\n", millis() - lastButtonPress);
 
       if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
-          settings.removeAll();
-          return setup();
+        settings.removeAll();
+        return setup();
       }
 
       buttonHoldMillis = millis();
@@ -345,7 +347,7 @@ void loop() {
       currentScreen = (currentScreen + 1) % 3;
 
       if (buttonPressed == ROBOT_SCREEN) {
-          robotFirstTimeShow = true;
+        robotFirstTimeShow = true;
       }
 
       lastButtonPress = millis();
@@ -355,10 +357,15 @@ void loop() {
     buttonState = newState;
 
     switch (currentScreen) {
-      case WEATHER_SCREEN: showWeather(); break;
-      case CLOCK_SCREEN: showTime(); break;
-      case ROBOT_SCREEN: showRobot(robotFirstTimeShow); break;
+    case WEATHER_SCREEN:
+      showWeather();
+      break;
+    case CLOCK_SCREEN:
+      showTime();
+      break;
+    case ROBOT_SCREEN:
+      showRobot(robotFirstTimeShow);
+      break;
     }
   }
- 
 }

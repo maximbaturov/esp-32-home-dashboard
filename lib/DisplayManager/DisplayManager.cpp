@@ -1,15 +1,10 @@
 #include "DisplayManager.h"
 
-DisplayManager::DisplayManager(uint8_t width, uint8_t height, int8_t resetPin, TwoWire* wire)
-    : display(width, height, wire, resetPin) {}
+DisplayManager::DisplayManager(uint8_t width, uint8_t height, int8_t resetPin, TwoWire *wire) : display(width, height, wire, resetPin) {}
 
-bool DisplayManager::begin(uint8_t addr) {
-    return display.begin(SSD1306_SWITCHCAPVCC, addr);
-}
+bool DisplayManager::begin(uint8_t addr) { return display.begin(SSD1306_SWITCHCAPVCC, addr); }
 
-Adafruit_SSD1306& DisplayManager::getDisplay() {
-    return display;
-}
+Adafruit_SSD1306 &DisplayManager::getDisplay() { return display; }
 
 void DisplayManager::addMessage(const String &msg) {
   if (logCount >= MAX_LOG_LINES) {
@@ -39,6 +34,6 @@ void DisplayManager::addMessage(const String &msg) {
 }
 
 void DisplayManager::clear() {
-    display.clearDisplay();
-    display.display();
+  display.clearDisplay();
+  display.display();
 }

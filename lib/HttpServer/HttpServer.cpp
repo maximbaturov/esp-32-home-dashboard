@@ -1,25 +1,20 @@
 #include "HttpServer.h"
 
-HttpServer::HttpServer(DisplayManager& screen, WiFiManager& wifi, Storage& storage)
-    : server(80), screen(screen), wifi(wifi), storage(storage) {}
+HttpServer::HttpServer(DisplayManager &screen, WiFiManager &wifi, Storage &storage) : server(80), screen(screen), wifi(wifi), storage(storage) {}
 
 void HttpServer::start() {
   server.on("/", [this]() { indexPage(); });
   server.begin();
-  
+
   screen.addMessage("HTTP server started");
 }
 
-void HttpServer::stop() {
-  server.close();
-}
+void HttpServer::stop() { server.close(); }
 
-void HttpServer::handleClient() {
-  server.handleClient();
-}
+void HttpServer::handleClient() { server.handleClient(); }
 
 void HttpServer::indexPage() {
-if (server.hasArg("ssid") && server.hasArg("password")) {
+  if (server.hasArg("ssid") && server.hasArg("password")) {
     String ssid = server.arg("ssid");
     String password = server.arg("password");
 
@@ -100,6 +95,6 @@ if (server.hasArg("ssid") && server.hasArg("password")) {
       </html>
       )rawliteral";
 
-      server.send(200, "text/html", html);
+    server.send(200, "text/html", html);
   }
 }
