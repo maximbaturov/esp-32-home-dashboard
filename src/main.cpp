@@ -20,7 +20,7 @@
 void initTime();
 void showTime();
 JSONVar getWeather();
-void showWeather();
+void showWeather(JSONVar openWeather);
 void showRobot(bool firstBoot);
 
 // button
@@ -32,8 +32,11 @@ unsigned long lastButtonPress = 0;
 
 // weather
 JSONVar openWeatherCache;
+JSONVar lastShowedWeather;
 const unsigned long WEATHER_CACHE_TIMEOUT = 5 * 60 * 1000; // 5min
 unsigned long lastWeatherUpdate = 0;
+
+String lastShowedTime;
 
 // screens
 const int WEATHER_SCREEN = 0;
@@ -67,14 +70,17 @@ void showTime() {
   struct tm timeinfo;
   Adafruit_SSD1306 &display = screen.getDisplay();
 
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setTextColor(SSD1306_WHITE);
-
   if (getLocalTime(&timeinfo)) {
     char buffer[16];
     strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
+    
+    if (lastShowedTime == buffer) {
+      return;
+    }
 
+    lastShowedTime = buffer;
+
+    display.clearDisplay();
     display.setTextSize(4);
     display.setCursor(0, 0);
     display.println(buffer);
@@ -84,6 +90,7 @@ void showTime() {
     display.setCursor(0, 48);
     display.println(buffer);
   } else {
+    display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(10, 10);
     display.println("сan't show time");
@@ -93,54 +100,59 @@ void showTime() {
 }
 
 JSONVar getWeather() {
+  JSONVar openWeather;
   HTTPClient http;
+  String url = "https://api.openweathermap.org/data/2.5/weather?lat=49.83935806420136&lon=24.02160867276371&appid={OPEN_WEATHER_API_KEY}&units=metric";
+  unsigned long now = millis();
 
-  String response = "{}";
-  String url =
-      "https://api.openweathermap.org/data/2.5/weather?lat=49.83935806420136&lon=24.02160867276371&appid={OPEN_WEATHER_API_KEY}&units=metric";
+  if (openWeatherCache == JSONVar() || now - lastWeatherUpdate > WEATHER_CACHE_TIMEOUT) {
+    Serial.println("request weather");  
 
-  url.replace("{OPEN_WEATHER_API_KEY}", OPEN_WEATHER_API_KEY);
+    url.replace("{OPEN_WEATHER_API_KEY}", OPEN_WEATHER_API_KEY);
 
-  http.begin(url.c_str());
+    http.begin(url.c_str());
 
-  int httpResponseCode = http.GET();
+    int httpResponseCode = http.GET();
 
-  if (httpResponseCode != 200) {
-    Serial.print("Error code: ");
-    Serial.println(httpResponseCode);
+    if (httpResponseCode != 200) {
+      Serial.printf("Error code: %d", httpResponseCode);
+      return JSON.parse("{}");
+    }
 
-    return JSON.parse("{}");
+    openWeather = JSON.parse(http.getString());
+
+    http.end();
+
+    if (JSON.typeof(openWeather) == "undefined") {
+      Serial.println("Weather response, parsing failed!");
+      return JSON.parse("{}");
+    }
+
+    lastWeatherUpdate = millis();
+    openWeatherCache = openWeather;
   }
-
-  JSONVar openWeather = JSON.parse(http.getString());
-
-  http.end();
-
-  if (JSON.typeof(openWeather) == "undefined") {
-    Serial.println("Parsing input failed!");
-    return JSON.parse("{}");
-  }
-
-  return openWeather;
+  
+  return openWeatherCache;
 }
 
-void showWeather() {
-  JSONVar openWeather;
-  unsigned long now = millis();
-  Adafruit_SSD1306 &display = screen.getDisplay();
+void showWeather(JSONVar openWeather) {
 
+  if (lastShowedWeather != JSONVar() 
+    && lastShowedWeather["main"]["temp"] == openWeather["main"]["temp"]
+    && lastShowedWeather["main"]["feels_like"] == openWeather["main"]["feels_like"]
+    && lastShowedWeather["wind"]["speed"] == openWeather["wind"]["speed"]
+    && lastShowedWeather["main"]["humidity"] == openWeather["main"]["humidity"]
+  ) {
+      return;
+  }
+
+  Serial.println("show updated weather data");
+
+  Adafruit_SSD1306 &display = screen.getDisplay();
+  
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
-
-  if (openWeatherCache == JSONVar() || now - lastWeatherUpdate > WEATHER_CACHE_TIMEOUT) {
-    Serial.println("request weather");
-    openWeatherCache = getWeather();
-    openWeather = openWeatherCache;
-    lastWeatherUpdate = millis();
-  } else {
-    openWeather = openWeatherCache;
-  }
 
   const char *iconCode = (const char *)openWeather["weather"][0]["icon"];
   const char *message = (const char *)openWeather["weather"][0]["main"];
@@ -189,6 +201,8 @@ void showWeather() {
   display.setCursor(0, 56);
 
   display.display();
+
+  lastShowedWeather = openWeather;
 }
 
 void showRobot(bool firstBoot) {
@@ -286,6 +300,11 @@ void initTime() {
   }
 }
 
+void clearShowedData() {
+  lastShowedWeather = JSONVar();
+  lastShowedTime = "";
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -321,6 +340,7 @@ void setup() {
 
     if (buttonPressed == WEATHER_SCREEN) {
       screen.addMessage("Getting weather...");
+      getWeather();
     }
   }
 }
@@ -333,8 +353,6 @@ void loop() {
     bool newState = digitalRead(BUTTON_PIN);
 
     if (newState == LOW && buttonState == LOW) {
-      Serial.printf("HOLD %d\n", millis() - lastButtonPress);
-
       if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
         settings.removeAll();
         return setup();
@@ -352,13 +370,15 @@ void loop() {
 
       lastButtonPress = millis();
       Serial.printf("Switched to screen %d\n", currentScreen + 1);
+
+      clearShowedData();
     }
 
     buttonState = newState;
 
     switch (currentScreen) {
     case WEATHER_SCREEN:
-      showWeather();
+      showWeather(getWeather());
       break;
     case CLOCK_SCREEN:
       showTime();
