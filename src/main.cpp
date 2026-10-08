@@ -8,21 +8,22 @@
 #include <Adafruit_SSD1306.h>
 #include "bmp.h"
 #include <FluxGarage_RoboEyes.h>
+#include <Preferences.h>
 
 void initAccessPoint();
+void saveSetting(const char* key, String value);
 
 //display
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define SDA_PIN 15
-#define SCL_PIN 5
+#define SDA_PIN 21
+#define SCL_PIN 19
 #define OLED_ADDR 0x3C
 #define OLED_RESET -1
 
 bool isFirstLoopIteration = true;
 
 //button
-#define BUTTON_PIN 14 
 int buttonPressed  = 0;
 int buttonHoldMillis  = 0;
 const int RESET_HOLD_THRESHOLD = 15 * 1000; //15sec
@@ -49,6 +50,10 @@ int currentScreen = WEATHER_SCREEN;
 //wifi
 bool isAccessMode = true; 
 
+//storage
+Preferences preferences;
+
+//web server
 WebServer server(80);
 
 //time server
@@ -70,7 +75,7 @@ bool event1wasPlayed = 0;
 bool event2wasPlayed = 0;
 bool event3wasPlayed = 0;
 
-void addLog(const String &msg) {
+void log(const String &msg) {
   if (logCount >= MAX_LOG_LINES) {
     for (int i = 1; i < MAX_LOG_LINES; i++) {
       logLines[i - 1] = logLines[i];
@@ -294,18 +299,18 @@ bool wifiConnect(String ssid, String password) {
   WiFi.begin(ssid, password);
 
   int retries = 0;
-  addLog("Connecting to WIFI...");
+  log("Connecting to WIFI...");
   
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
-    delay(500);
-    addLog("WIFI failed"); 
+  while (WiFi.status() != WL_CONNECTED && retries < 15) {
+    delay(1000);
+    log("WIFI failed " + String(retries)); 
     retries++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    addLog("WIFI connected");
-    addLog("Local IP:");
-    addLog(WiFi.localIP().toString());
+    log("WIFI connected");
+    log("Local IP:");
+    log(WiFi.localIP().toString());
 
     isAccessMode = false;
     return true;
@@ -314,38 +319,41 @@ bool wifiConnect(String ssid, String password) {
   return false;
 }
 
-void wifiConnect2() {
+void wifiConnectDebug() {
+  isAccessMode = false;
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   int retries = 0;
-  addLog("Connecting to WIFI...");
+  log("Connecting to WIFI...");
   
   while (WiFi.status() != WL_CONNECTED && retries < 20) {
     delay(500);
-    addLog("WIFI failed"); 
+    log("WIFI failed"); 
     retries++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    addLog("WIFI connected");
-    addLog("Local IP:");
-    addLog(WiFi.localIP().toString());
+    log("WIFI connected");
+    log("Local IP:");
+    log(WiFi.localIP().toString());
   }
 }
 
 void httpIndex() {
-if (server.hasArg("name") && server.hasArg("password")) {
-    String name = server.arg("name");
+if (server.hasArg("ssid") && server.hasArg("password")) {
+    String ssid = server.arg("ssid");
     String password = server.arg("password");
 
-    addLog("Name: ");
-    addLog(name);
+    server.send(200, "text/html", "");
+    
+    log("Connecting to " + ssid);
 
-    addLog("Password: ");
-    addLog(password);
-
-    if(!wifiConnect(name, password)) {
+    if (wifiConnect(ssid, password)) {
+      saveSetting("ssid", ssid);
+      saveSetting("password", password);
+    } else {
       initAccessPoint();
     }
   } else {
@@ -406,7 +414,7 @@ if (server.hasArg("name") && server.hasArg("password")) {
           <h1>PopBot 🤖</h1>
           <h5>WiFi налаштування</h1>
           <form method="POST" action="/">
-            <div class="form-control"><input name="name" type="text" placeholder="ім'я" required></div>
+            <div class="form-control"><input name="ssid" type="text" placeholder="назва мережі" required></div>
             <div class="form-control"><input name="password" type="text" placeholder="пароль" required></div>
             <div class="form-control"><input type="submit" value="Send"></div>
           </form>
@@ -426,24 +434,24 @@ void initAccessPoint() {
   WiFi.softAP(sid, "");
 
   IPAddress ip = WiFi.softAPIP();
-  addLog("Access Point started");
+  log("Access Point started");
 
   char msg[64];
   snprintf(msg, sizeof(msg), "WiFi: %s", sid);
-  addLog(msg);
+  log(msg);
 
-  addLog("IP Address:");
-  addLog(ip.toString());
+  log("IP Address:");
+  log(ip.toString());
 
   server.on("/", httpIndex);
   server.begin();
-  addLog("Server started");
+  log("Server started");
 
   isAccessMode = true;
 }
 
 void initTime() {
-  addLog("Getting time...");
+  log("Getting time...");
   configTime(0, 0, ntpServer);
 
   setenv("TZ", "EET-2EEST,M3.5.0/3,M10.5.0/4", 1);
@@ -452,17 +460,38 @@ void initTime() {
   struct tm timeinfo;
   int retries = 0;
   while (!getLocalTime(&timeinfo) && retries < 10) {
-    addLog("Waiting for NTP...");
+    log("Waiting for NTP..." + String(retries));
     delay(1000);
     retries++;
   }
 
   if (retries == 10) {
-    addLog("Failed to get time");
+    log("Failed to get time");
   } else {
-    addLog("Time updated!");
+    log("Time updated!");
     Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
   }
+}
+
+void removeSettings() {
+  preferences.begin("settings", false); 
+  preferences.clear();
+  preferences.end();
+}
+
+String getSetting(const char* key) {
+  String value = "";
+  preferences.begin("settings", true);
+  value = preferences.getString(key, "");
+  preferences.end();
+
+  return value;
+}
+
+void saveSetting(const char* key, String value) {
+  preferences.begin("settings", false);
+  preferences.putString(key, value);
+  preferences.end();
 }
 
 void setup() {
@@ -481,12 +510,17 @@ void setup() {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
-  addLog("PopBot wakes up");
+  log("PopBot wakes up");
 
   //init wifi
-  // initAccessPoint();
-  wifiConnect2();
-  isAccessMode = false;
+  String ssid = getSetting("ssid");
+  String password = getSetting("password");
+
+  if(ssid != "" && password != "") {
+    wifiConnect(ssid, password);
+  } else {
+    initAccessPoint();
+  }
 }
 
 void loop() {
@@ -498,7 +532,7 @@ void loop() {
       initTime();
 
       if (buttonPressed == 0) {
-        addLog("Getting weather...");
+        log("Getting weather...");
       }
       isFirstLoopIteration = false;
     }
@@ -510,6 +544,7 @@ void loop() {
       Serial.printf("HOLD %d\n", millis() - lastButtonPress);
 
       if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
+          removeSettings();
           return setup();
       }
 
