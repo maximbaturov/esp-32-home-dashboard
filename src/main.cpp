@@ -1,74 +1,51 @@
-#include <Arduino.h>
-#include <Arduino_JSON.h>
-#include <Wire.h>
-#include <WiFi.h>
-#include <WebServer.h>
-#include <HTTPClient.h>
+#include "bmp.h"
+#include "server.h"
+#include "wifi.h"
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include "bmp.h"
+#include <Arduino.h>
+#include <Arduino_JSON.h>
 #include <FluxGarage_RoboEyes.h>
+#include <HTTPClient.h>
+#include <Wire.h>
 
 void initAccessPoint();
 
-//display
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define SDA_PIN 21
 #define SCL_PIN 19
 #define OLED_ADDR 0x3C
 #define OLED_RESET -1
+#define BUTTON_PIN 6
+#define MAX_LOG_LINES 6
 
-bool isFirstLoopIteration = true;
-
-//button
-#define BUTTON_PIN 14 
-int buttonPressed  = 0;
-int buttonHoldMillis  = 0;
-const int RESET_HOLD_THRESHOLD = 15 * 1000; //15sec
-
-// long lastRandom = 0;
-// int randomLoopCount = 0;
-// const int randomLoopThreshold = 200;
-
-
-bool buttonState = HIGH;
-unsigned long lastButtonPress = 0;
-
-//weather
-JSONVar openWeatherCache;
-const unsigned long WEATHER_CACHE_TIMEOUT = 5 * 60 * 1000; //5min
-unsigned long lastWeatherUpdate = 0;
-
-//screens
+const int RESET_HOLD_THRESHOLD = 5 * 1000; // 5sec
 const int WEATHER_SCREEN = 0;
 const int CLOCK_SCREEN = 1;
 const int ROBOT_SCREEN = 2;
-int currentScreen = WEATHER_SCREEN;
+const char *ntpServer = "pool.ntp.org";
+const unsigned long WEATHER_CACHE_TIMEOUT = 5 * 60 * 1000; // 5min
 
-//wifi
-bool isAccessMode = true; 
+bool buttonState = HIGH;
 
-WebServer server(80);
-
-//time server
-const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3 * 3600;
-const int   daylightOffset_sec = 0;
-
-//log
-#define MAX_LOG_LINES 6
-String logLines[MAX_LOG_LINES];
-int logCount = 0;
-
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
-//robo eyes
-RoboEyes<Adafruit_SSD1306> roboEyes(display); 
-unsigned long eventTimer;
+bool isFirstLoopIteration = true;
 bool event1wasPlayed = 0;
 bool event2wasPlayed = 0;
 bool event3wasPlayed = 0;
+int buttonPressed = 0;
+int buttonHoldMillis = 0;
+int currentScreen = WEATHER_SCREEN;
+int logCount = 0;
+unsigned long lastButtonPress = 0;
+unsigned long lastWeatherUpdate = 0;
+unsigned long eventTimer;
+JSONVar openWeatherCache;
+String logLines[MAX_LOG_LINES];
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+RoboEyes<Adafruit_SSD1306> roboEyes(display);
 
 void addLog(const String &msg) {
   if (logCount >= MAX_LOG_LINES) {
@@ -99,17 +76,17 @@ void showTime() {
   display.setTextColor(SSD1306_WHITE);
 
   if (getLocalTime(&timeinfo)) {
-      char buffer[16];
-      strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
-      
-      display.setTextSize(4);
-      display.setCursor(0, 0);
-      display.println(buffer);
+    char buffer[16];
+    strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
 
-      strftime(buffer, sizeof(buffer), "%d-%m-%Y", &timeinfo);
-      display.setTextSize(2);
-      display.setCursor(0, 48);
-      display.println(buffer);
+    display.setTextSize(4);
+    display.setCursor(0, 0);
+    display.println(buffer);
+
+    strftime(buffer, sizeof(buffer), "%d-%m-%Y", &timeinfo);
+    display.setTextSize(2);
+    display.setCursor(0, 48);
+    display.println(buffer);
   } else {
     display.setTextSize(1);
     display.setCursor(10, 10);
@@ -123,8 +100,10 @@ JSONVar getWeather() {
   HTTPClient http;
 
   String response = "{}";
-  String url = "https://api.openweathermap.org/data/2.5/weather?lat=49.83935806420136&lon=24.02160867276371&appid={OPEN_WEATHER_API_KEY}&units=metric";
-  
+  String url = "https://api.openweathermap.org/data/2.5/"
+               "weather?lat=49.83935806420136&lon=24.02160867276371&appid={"
+               "OPEN_WEATHER_API_KEY}&units=metric";
+
   url.replace("{OPEN_WEATHER_API_KEY}", OPEN_WEATHER_API_KEY);
 
   http.begin(url.c_str());
@@ -134,31 +113,32 @@ JSONVar getWeather() {
   if (httpResponseCode != 200) {
     Serial.print("Error code: ");
     Serial.println(httpResponseCode);
-    
+
     return JSON.parse("{}");
   }
 
   JSONVar openWeather = JSON.parse(http.getString());
-  
+
   http.end();
 
   if (JSON.typeof(openWeather) == "undefined") {
     Serial.println("Parsing input failed!");
     return JSON.parse("{}");
   }
-  
+
   return openWeather;
 }
 
 void showWeather() {
   JSONVar openWeather;
   unsigned long now = millis();
-  
+
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
-  
-  if (openWeatherCache == JSONVar() || now - lastWeatherUpdate > WEATHER_CACHE_TIMEOUT) {
+
+  if (openWeatherCache == JSONVar() ||
+      now - lastWeatherUpdate > WEATHER_CACHE_TIMEOUT) {
     Serial.println("request weather");
     openWeatherCache = getWeather();
     openWeather = openWeatherCache;
@@ -168,24 +148,24 @@ void showWeather() {
     openWeather = openWeatherCache;
   }
 
-  const char* iconCode = (const char*)openWeather["weather"][0]["icon"];
-  const char* message = (const char*)openWeather["weather"][0]["main"];
+  const char *iconCode = (const char *)openWeather["weather"][0]["icon"];
+  const char *message = (const char *)openWeather["weather"][0]["main"];
   double temperature = (double)openWeather["main"]["temp"];
   double feels = (double)openWeather["main"]["feels_like"];
   double wind_speed = (double)openWeather["wind"]["speed"];
   int humidity = (int)openWeather["main"]["humidity"];
 
-  const unsigned char* iconBitmap = sunny;
+  const unsigned char *iconBitmap = sunny;
 
   if (strcmp(iconCode, "01d") == 0 || strcmp(iconCode, "01n") == 0) {
     iconBitmap = sunny;
   } else if (strcmp(iconCode, "02d") == 0 || strcmp(iconCode, "02n") == 0) {
     iconBitmap = sunny_cloudy;
-  } else if (strcmp(iconCode, "03d") == 0 || strcmp(iconCode, "03n") == 0 
-      || strcmp(iconCode, "04d") == 0 || strcmp(iconCode, "04n") == 0) 
-  {
+  } else if (strcmp(iconCode, "03d") == 0 || strcmp(iconCode, "03n") == 0 ||
+             strcmp(iconCode, "04d") == 0 || strcmp(iconCode, "04n") == 0) {
     iconBitmap = cloudy;
-  } else if (strcmp(iconCode, "09d") == 0 || strcmp(iconCode, "09n") == 0 || strcmp(iconCode, "10d") == 0 || strcmp(iconCode, "10n") == 0) {
+  } else if (strcmp(iconCode, "09d") == 0 || strcmp(iconCode, "09n") == 0 ||
+             strcmp(iconCode, "10d") == 0 || strcmp(iconCode, "10n") == 0) {
     iconBitmap = rainy;
   } else if (strcmp(iconCode, "11d") == 0 || strcmp(iconCode, "11n") == 0) {
     iconBitmap = thunder;
@@ -195,7 +175,8 @@ void showWeather() {
     iconBitmap = wind;
   }
 
-  display.drawBitmap(0, 0, iconBitmap, SCREEN_WIDTH/4, SCREEN_HEIGHT/2, SSD1306_WHITE);
+  display.drawBitmap(0, 0, iconBitmap, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2,
+                     SSD1306_WHITE);
 
   display.setTextSize(1);
   display.setCursor(40, 0);
@@ -222,19 +203,32 @@ void showWeather() {
 void showRobot(bool firstBoot) {
   long r;
 
-  if(firstBoot) {
-      // Startup robo eyes
-      roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 100); // screen-width, screen-height, max framerate - 60-100fps are good for smooth animations
-      roboEyes.setAutoblinker(ON, 3, 2); // Start auto blinker animation cycle -> bool active, int interval, int variation -> turn on/off, set interval between each blink in full seconds, set range for random interval variation in full seconds
-      roboEyes.setIdleMode(ON, 2, 2); // Start idle animation cycle (eyes looking in random directions) -> turn on/off, set interval between each eye repositioning in full seconds, set range for random time interval variation in full seconds
-      
-      eventTimer = millis(); // start event timer from here
+  if (firstBoot) {
+    // Startup robo eyes
+    roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT,
+                   100); // screen-width, screen-height, max framerate -
+                         // 60-100fps are good for smooth animations
+    roboEyes.setAutoblinker(
+        ON, 3, 2); // Start auto blinker animation cycle -> bool active, int
+                   // interval, int variation -> turn on/off, set interval
+                   // between each blink in full seconds, set range for random
+                   // interval variation in full seconds
+    roboEyes.setIdleMode(
+        ON, 2, 2); // Start idle animation cycle (eyes looking in random
+                   // directions) -> turn on/off, set interval between each eye
+                   // repositioning in full seconds, set range for random time
+                   // interval variation in full seconds
+
+    eventTimer = millis(); // start event timer from here
   }
-  // roboEyes.setCuriosity(ON); // bool on/off -> when turned on, height of the outer eyes increases when moving to the very left or very right
+  // roboEyes.setCuriosity(ON); // bool on/off -> when turned on, height of the
+  // outer eyes increases when moving to the very left or very right
 
   // Set horizontal or vertical flickering
-  // roboEyes.setHFlicker(ON, 2); // bool on/off, byte amplitude -> horizontal flicker: alternately displacing the eyes in the defined amplitude in pixels
-  // roboEyes.setVFlicker(ON, 2); // bool on/off, byte amplitude -> vertical flicker: alternately displacing the eyes in the defined amplitude in pixels
+  // roboEyes.setHFlicker(ON, 2); // bool on/off, byte amplitude -> horizontal
+  // flicker: alternately displacing the eyes in the defined amplitude in pixels
+  // roboEyes.setVFlicker(ON, 2); // bool on/off, byte amplitude -> vertical
+  // flicker: alternately displacing the eyes in the defined amplitude in pixels
 
   // roboEyes.setPosition(DEFAULT); // eye position should be middle center
 
@@ -242,18 +236,20 @@ void showRobot(bool firstBoot) {
 
   // LOOPED ANIMATION SEQUENCE
   // Do once after defined number of milliseconds
-  if(millis() >= eventTimer+2000 && event1wasPlayed == 0){
-    event1wasPlayed = 1; // flag variable to make sure the event will only be handled once
-    roboEyes.open(); // open eyes 
+  if (millis() >= eventTimer + 2000 && event1wasPlayed == 0) {
+    event1wasPlayed =
+        1; // flag variable to make sure the event will only be handled once
+    roboEyes.open(); // open eyes
   }
 
   // Do once after defined number of milliseconds
-  if(millis() >= eventTimer+4000 && event2wasPlayed == 0){
+  if (millis() >= eventTimer + 4000 && event2wasPlayed == 0) {
     r = random(0, 3);
-    event2wasPlayed = 1; // flag variable to make sure the event will only be handled once
+    event2wasPlayed =
+        1; // flag variable to make sure the event will only be handled once
     roboEyes.setMood(HAPPY);
-    
-    if(r == 1) {
+
+    if (r == 1) {
       roboEyes.anim_laugh();
     }
 
@@ -262,184 +258,33 @@ void showRobot(bool firstBoot) {
     }
   }
   // Do once after defined number of milliseconds
-  if(millis() >= eventTimer+6000 && event3wasPlayed == 0){
-    event3wasPlayed = 1; // flag variable to make sure the event will only be handled once
+  if (millis() >= eventTimer + 6000 && event3wasPlayed == 0) {
+    event3wasPlayed =
+        1; // flag variable to make sure the event will only be handled once
 
     if (random(0, 2)) {
-       roboEyes.setMood(TIRED);
+      roboEyes.setMood(TIRED);
     } else {
-       roboEyes.setMood(ANGRY);
+      roboEyes.setMood(ANGRY);
     }
 
     if (random(0, 2)) {
       roboEyes.blink();
     }
   }
-  // Do once after defined number of milliseconds, then reset timer and flags to restart the whole animation sequence
-  if(millis() >= eventTimer+8000){
+  // Do once after defined number of milliseconds, then reset timer and flags to
+  // restart the whole animation sequence
+  if (millis() >= eventTimer + 8000) {
     roboEyes.close(); // close eyes again
     roboEyes.setMood(DEFAULT);
-    // Reset the timer and the event flags to restart the whole "complex animation loop"
+    // Reset the timer and the event flags to restart the whole "complex
+    // animation loop"
     eventTimer = millis(); // reset timer
-    event1wasPlayed = 0; // reset flags
+    event1wasPlayed = 0;   // reset flags
     event2wasPlayed = 0;
     event3wasPlayed = 0;
   }
   // END OF LOOPED ANIMATION SEQUENCE
-}
-
-bool wifiConnect(String ssid, String password) {
-  WiFi.softAPdisconnect(true);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  int retries = 0;
-  addLog("Connecting to WIFI...");
-  
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
-    delay(500);
-    addLog("WIFI failed"); 
-    retries++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    addLog("WIFI connected");
-    addLog("Local IP:");
-    addLog(WiFi.localIP().toString());
-
-    isAccessMode = false;
-    return true;
-  }
-
-  return false;
-}
-
-void wifiConnect2() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  int retries = 0;
-  addLog("Connecting to WIFI...");
-  
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
-    delay(500);
-    addLog("WIFI failed"); 
-    retries++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    addLog("WIFI connected");
-    addLog("Local IP:");
-    addLog(WiFi.localIP().toString());
-  }
-}
-
-void httpIndex() {
-if (server.hasArg("name") && server.hasArg("password")) {
-    String name = server.arg("name");
-    String password = server.arg("password");
-
-    addLog("Name: ");
-    addLog(name);
-
-    addLog("Password: ");
-    addLog(password);
-
-    if(!wifiConnect(name, password)) {
-      initAccessPoint();
-    }
-  } else {
-    String html = R"rawliteral(
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <title>PopBot Server</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #55d275ff, #0072ff);
-            color: #fff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-          }
-          .container {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 30px 40px;
-            border-radius: 15px;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-          }
-          input[type="text"] {
-            padding: 10px 15px;
-            width: 200px;
-            border: none;
-            border-radius: 5px;
-            margin-right: 10px;
-          }
-          input[type="submit"] {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            background-color: #00e676;
-            color: #000;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.2s;
-          }
-          input[type="submit"]:hover {
-            background-color: #69f0ae;
-          }
-          h1 {
-            margin-bottom: 20px;
-          }
-          .form-control {
-            margin-bottom: 10px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>PopBot 🤖</h1>
-          <h5>WiFi налаштування</h1>
-          <form method="POST" action="/">
-            <div class="form-control"><input name="name" type="text" placeholder="ім'я" required></div>
-            <div class="form-control"><input name="password" type="text" placeholder="пароль" required></div>
-            <div class="form-control"><input type="submit" value="Send"></div>
-          </form>
-        </div>
-      </body>
-      </html>
-      )rawliteral";
-
-      server.send(200, "text/html", html);
-  }
-}
-
-void initAccessPoint() {
-  String sid = "PopBot";
-
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(sid, "");
-
-  IPAddress ip = WiFi.softAPIP();
-  addLog("Access Point started");
-
-  char msg[64];
-  snprintf(msg, sizeof(msg), "WiFi: %s", sid);
-  addLog(msg);
-
-  addLog("IP Address:");
-  addLog(ip.toString());
-
-  server.on("/", httpIndex);
-  server.begin();
-  addLog("Server started");
-
-  isAccessMode = true;
 }
 
 void initTime() {
@@ -470,12 +315,13 @@ void setup() {
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  //init display
+  // init display
   Wire.begin(SDA_PIN, SCL_PIN);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
     Serial.println(F("SSD1306 init failed"));
-    for (;;);
+    for (;;)
+      ;
   }
 
   display.clearDisplay();
@@ -483,18 +329,29 @@ void setup() {
 
   addLog("PopBot wakes up");
 
-  //init wifi
-  // initAccessPoint();
-  wifiConnect2();
-  isAccessMode = false;
+  if (DEBUG_MODE == 1) {
+    String msg = "WiFi connected";
+    bool isConnected = wifiConnectDevMode();
+
+    if (!isConnected) {
+      msg = "WiFi is not connected";
+    }
+
+    addLog(msg);
+  } else {
+    initAccessPoint();
+    addLog("WiFi: " + String(WIFI_NAME));
+    addLog("IP: " + getIp());
+
+    initServer();
+  }
 }
 
 void loop() {
-  if(isAccessMode) {
-    server.handleClient();
+  if (isWifiInAccessMode()) {
+    handleServer();
   } else {
     if (isFirstLoopIteration) {
-      //init time
       initTime();
 
       if (buttonPressed == 0) {
@@ -505,22 +362,23 @@ void loop() {
 
     bool robotFirstTimeShow = false;
     bool newState = digitalRead(BUTTON_PIN);
-    
+
     if (newState == LOW && buttonState == LOW) {
       Serial.printf("HOLD %d\n", millis() - lastButtonPress);
 
       if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
-          return setup();
+        return setup();
       }
 
       buttonHoldMillis = millis();
     }
 
-    if (newState == LOW && buttonState == HIGH && millis() - lastButtonPress > 300) {
+    if (newState == LOW && buttonState == HIGH &&
+        millis() - lastButtonPress > 300) {
       currentScreen = (currentScreen + 1) % 3;
 
       if (buttonPressed == ROBOT_SCREEN) {
-          robotFirstTimeShow = true;
+        robotFirstTimeShow = true;
       }
 
       lastButtonPress = millis();
@@ -530,31 +388,15 @@ void loop() {
     buttonState = newState;
 
     switch (currentScreen) {
-      case WEATHER_SCREEN: showWeather(); break;
-      case CLOCK_SCREEN: showTime(); break;
-      case ROBOT_SCREEN: showRobot(robotFirstTimeShow); break;
+    case WEATHER_SCREEN:
+      showWeather();
+      break;
+    case CLOCK_SCREEN:
+      showTime();
+      break;
+    case ROBOT_SCREEN:
+      showRobot(robotFirstTimeShow);
+      break;
     }
-
-    //   long r;
-
-    //   if (lastRandom == 0 || randomLoopCount == randomLoopThreshold) {
-    //     r = random(1, 3);
-    //     lastRandom = r;
-    //   } else {
-    //     r = lastRandom;
-    //   }
-
-    //   if (r == 1) {
-    //     delay(loopDelayTime);
-    //     showWeather();
-    //   } else if(r == 2) {
-    //     delay(loopDelayTime);
-    //     showTime();
-    //   } else if(r == 3) {
-    //     showRobot();
-    //   }
-
-    //   randomLoopCount++;
   }
- 
 }
