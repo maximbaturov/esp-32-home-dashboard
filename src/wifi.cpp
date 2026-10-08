@@ -44,7 +44,8 @@ bool wifiConnect(String ssid, String password) {
 
 bool isWifiInAccessMode() {
   return WIFI_AP == WiFi.getMode();
-  ;
 }
 
-String getIp() { return WiFi.localIP().toString(); }
+String getIp() { 
+    return isWifiInAccessMode() ? WiFi.softAPIP().toString() : WiFi.localIP().toString(); 
+}

@@ -27,9 +27,13 @@
 #define _FLUXGARAGE_ROBOEYES_H
 
 
-// Display colors
-uint8_t BGCOLOR = 0; // background and overlays
-uint8_t MAINCOLOR = 1; // drawings
+// PopBot extension: nonblocking reactions and bounded eye rendering.
+#include <Arduino.h>
+#include <math.h>
+
+namespace roboeyes {
+enum class Reaction { None, Surprised, Suspicious, Sleepy, Wink, Focused, Irritated, Dance };
+}
 
 // For mood type switch
 #define DEFAULT 0
@@ -42,14 +46,14 @@ uint8_t MAINCOLOR = 1; // drawings
 #define OFF 0
 
 // For switch "predefined positions"
-#define N 1 // north, top center
-#define NE 2 // north-east, top right
-#define E 3 // east, middle right
-#define SE 4 // south-east, bottom right
-#define S 5 // south, bottom center
-#define SW 6 // south-west, bottom left
-#define W 7 // west, middle left
-#define NW 8 // north-west, top left 
+constexpr unsigned char N = 1; // north, top center
+constexpr unsigned char NE = 2; // north-east, top right
+constexpr unsigned char E = 3; // east, middle right
+constexpr unsigned char SE = 4; // south-east, bottom right
+constexpr unsigned char S = 5; // south, bottom center
+constexpr unsigned char SW = 6; // south-west, bottom left
+constexpr unsigned char W = 7; // west, middle left
+constexpr unsigned char NW = 8; // north-west, top left 
 // for middle center set "DEFAULT"
 
 
@@ -63,6 +67,9 @@ private:
 // Yes, everything is currently still accessible. Be responsible and don't mess things up :)
 
 public:
+using Reaction = roboeyes::Reaction;
+uint8_t BGCOLOR = 0;
+uint8_t MAINCOLOR = 1;
 
 // Reference to Adafruit display object
 AdafruitDisplay *display;
@@ -113,6 +120,10 @@ byte eyeRborderRadiusDefault = 8;
 byte eyeRborderRadiusCurrent = eyeRborderRadiusDefault;
 byte eyeRborderRadiusNext = eyeRborderRadiusDefault;
 
+int spaceBetweenDefault = 10;
+int spaceBetweenCurrent = spaceBetweenDefault;
+int spaceBetweenNext = 10;
+
 // EYE LEFT - Coordinates
 int eyeLxDefault = ((screenWidth)-(eyeLwidthDefault+spaceBetweenDefault+eyeRwidthDefault))/2;
 int eyeLyDefault = ((screenHeight-eyeLheightDefault)/2);
@@ -141,9 +152,7 @@ byte eyelidsHappyBottomOffsetMax = (eyeLheightDefault/2)+3;
 byte eyelidsHappyBottomOffset = 0;
 byte eyelidsHappyBottomOffsetNext = 0;
 // Space between eyes
-int spaceBetweenDefault = 10;
-int spaceBetweenCurrent = spaceBetweenDefault;
-int spaceBetweenNext = 10;
+
 
 
 //*********************************************************************************************
@@ -245,7 +254,7 @@ void update(){
 
 // Calculate frame interval based on defined frameRate
 void setFramerate(byte fps){
-  frameInterval = 1000/fps;
+  frameInterval = 1000/(fps ? fps : 1);
 }
 
 // Set color values
@@ -422,12 +431,13 @@ void setSweat (bool sweatBit) {
 
 // Returns the max x position for left eye
 int getScreenConstraint_X(){
-  return screenWidth-eyeLwidthCurrent-spaceBetweenCurrent-eyeRwidthCurrent;
+  const int remaining = screenWidth-eyeLwidthCurrent-spaceBetweenCurrent-eyeRwidthCurrent;
+  return remaining > 0 ? remaining : 0;
 } 
 
 // Returns the max y position for left eye
 int getScreenConstraint_Y(){
- return screenHeight-eyeLheightDefault; // using default height here, because height will vary when blinking and in curious mode
+ return screenHeight > eyeLheightDefault ? screenHeight-eyeLheightDefault : 0; // using default height here, because height will vary when blinking and in curious mode
 }
 
 
@@ -505,6 +515,7 @@ void anim_laugh() {
 //*********************************************************************************************
 
 void drawEyes(){
+  tickReaction();
 
   //// PRE-CALCULATIONS - EYE SIZES AND VALUES FOR ANIMATION TWEENINGS ////
 
@@ -522,12 +533,12 @@ void drawEyes(){
 
   // Left eye height
   eyeLheightCurrent = (eyeLheightCurrent + eyeLheightNext + eyeLheightOffset)/2;
-  eyeLy+= ((eyeLheightDefault-eyeLheightCurrent)/2); // vertical centering of eye when closing
-  eyeLy-= eyeLheightOffset/2;
+
+
   // Right eye height
   eyeRheightCurrent = (eyeRheightCurrent + eyeRheightNext + eyeRheightOffset)/2;
-  eyeRy+= (eyeRheightDefault-eyeRheightCurrent)/2; // vertical centering of eye when closing
-  eyeRy-= eyeRheightOffset/2;
+
+
 
 
   // Open eyes again after closing them
@@ -564,7 +575,7 @@ void drawEyes(){
 
   //// APPLYING MACRO ANIMATIONS ////
 
-	if(autoblinker){
+	if(autoblinker && !isReacting()){
 		if(millis() >= blinktimer){
 		blink();
 		blinktimer = millis()+(blinkInterval*1000)+(random(blinkIntervalVariation)*1000); // calculate next time for blinking
@@ -598,7 +609,7 @@ void drawEyes(){
   }
 
   // Idle - eyes moving to random positions on screen
-  if(idle){
+  if(idle && !isReacting()){
     if(millis() >= idleAnimationTimer){
       eyeLxNext = random(getScreenConstraint_X());
       eyeLyNext = random(getScreenConstraint_Y());
@@ -636,6 +647,16 @@ void drawEyes(){
     eyeRheightCurrent = 0;
     spaceBetweenCurrent = 0;
   }
+
+  // Keep animation state separate from the bounded, final render geometry.
+  const int oldLx=eyeLx, oldLy=eyeLy, oldRx=eyeRx, oldRy=eyeRy;
+  const int oldLw=eyeLwidthCurrent, oldLh=eyeLheightCurrent;
+  const int oldRw=eyeRwidthCurrent, oldRh=eyeRheightCurrent;
+  eyeLy += (eyeLheightDefault-eyeLheightCurrent)/2;
+  eyeRy += (eyeRheightDefault-eyeRheightCurrent)/2;
+  applyReactionGeometry();
+  boundEye(eyeLx, eyeLy, eyeLwidthCurrent, eyeLheightCurrent);
+  if (!cyclops) boundEye(eyeRx, eyeRy, eyeRwidthCurrent, eyeRheightCurrent);
 
   //// ACTUAL DRAWINGS ////
 
@@ -711,9 +732,161 @@ void drawEyes(){
     }
 
   display->display(); // show drawings on display
+  eyeLx=oldLx; eyeLy=oldLy; eyeRx=oldRx; eyeRy=oldRy;
+  eyeLwidthCurrent=oldLw; eyeLheightCurrent=oldLh;
+  eyeRwidthCurrent=oldRw; eyeRheightCurrent=oldRh;
 
 } // end of drawEyes method
 
+
+public:
+// durationMs=0 selects a default duration; Dance continues until stopDance().
+void react(Reaction reaction, unsigned long durationMs = 0) {
+  if (reaction == Reaction::None) { stopReaction(); return; }
+  if (!isReacting()) {
+    savedTired=tired; savedAngry=angry; savedHappy=happy;
+  }
+  activeReaction=reaction;
+  reactionStarted=millis();
+  reactionStopping=false;
+  reactionDuration=durationMs;
+  if (!reactionDuration && reaction != Reaction::Dance) {
+    reactionDuration = reaction == Reaction::Sleepy ? 5000UL :
+                       reaction == Reaction::Wink ? 1100UL : 2400UL;
+  }
+  // Prevent a previous one-shot shake from interfering with this reaction.
+  laugh=false; confused=false; laughToggle=true; confusedToggle=true;
+  setVFlicker(false); setHFlicker(false);
+  open();
+  setMood(reaction == Reaction::Wink || reaction == Reaction::Dance ? HAPPY :
+          reaction == Reaction::Irritated ? ANGRY :
+          reaction == Reaction::Sleepy ? TIRED : DEFAULT);
+}
+
+bool isReacting() const { return activeReaction != Reaction::None; }
+Reaction getReaction() const { return activeReaction; }
+void stopReaction() {
+  if (!isReacting()) return;
+  activeReaction=Reaction::None;
+  reactionStopping=false;
+  tired=savedTired; angry=savedAngry; happy=savedHappy;
+}
+void startDance(unsigned int bpm = 110) {
+  danceBpm=bpm < 30 ? 30 : (bpm > 240 ? 240 : bpm);
+  react(Reaction::Dance);
+}
+// Fade out instead of snapping to the previous position.
+void stopDance() {
+  if (activeReaction == Reaction::Dance && !reactionStopping) {
+    reactionStopping=true;
+    reactionStopStarted=millis();
+  }
+}
+
+private:
+Reaction activeReaction = Reaction::None;
+unsigned long reactionStarted=0, reactionDuration=0, reactionStopStarted=0;
+unsigned int danceBpm=110;
+bool reactionStopping=false;
+bool savedTired=false, savedAngry=false, savedHappy=false;
+
+static float smoothUnit(float v) {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v*v*(3.0f-2.0f*v);
+}
+void tickReaction() {
+  if (!isReacting()) return;
+  if ((reactionDuration && millis()-reactionStarted >= reactionDuration) ||
+      (reactionStopping && millis()-reactionStopStarted >= 350UL)) stopReaction();
+}
+static void scaleEye(int &x, int &y, int &w, int &h, float sx, float sy) {
+  const int nw = static_cast<int>(w*sx+0.5f);
+  const int nh = static_cast<int>(h*sy+0.5f);
+  x += (w-nw)/2; y += (h-nh)/2;
+  w=nw > 0 ? nw : 1; h=nh > 0 ? nh : 1;
+}
+void boundEye(int &x, int &y, int &w, int &h) {
+  const int margin=1;
+  const int maxW=screenWidth > 2 ? screenWidth-2 : 1;
+  const int maxH=screenHeight > 2 ? screenHeight-2 : 1;
+  w=w < 1 ? 1 : (w > maxW ? maxW : w);
+  h=h < 1 ? 1 : (h > maxH ? maxH : h);
+  x=x < margin ? margin : x;
+  y=y < margin ? margin : y;
+  if (x+w > screenWidth-margin) x=screenWidth-margin-w;
+  if (y+h > screenHeight-margin) y=screenHeight-margin-h;
+}
+void applyReactionGeometry() {
+  if (!isReacting()) return;
+  const unsigned long elapsed=millis()-reactionStarted;
+  const float t=static_cast<float>(elapsed);
+  float envelope=smoothUnit(t/300.0f);
+  if (reactionDuration) {
+    const float tail=smoothUnit(static_cast<float>(reactionDuration-elapsed)/350.0f);
+    if (tail < envelope) envelope=tail;
+  }
+  if (reactionStopping) envelope *= 1.0f-smoothUnit((millis()-reactionStopStarted)/350.0f);
+  const float progress=reactionDuration ? t/reactionDuration : 0;
+  float sx=1, sy=1, rightSy=1, dx=0, dy=0;
+  switch(activeReaction) {
+    case Reaction::Surprised: {
+      const float wide=envelope*(1.0f-smoothUnit((progress-0.40f)/0.12f));
+      sx=1.0f+0.10f*wide; sy=1.0f+0.30f*wide;
+      // Two smooth blink pulses after the surprised hold.
+      float blinkAmount=0;
+      for (int i=0; i<2; ++i) {
+        const float phase=(progress-(0.56f+i*0.18f))/0.12f;
+        if (phase>0 && phase<1) blinkAmount=sinf(phase*3.14159265f);
+      }
+      sy *= 1.0f-0.96f*blinkAmount;
+      rightSy=sy;
+      break;
+    }
+    case Reaction::Suspicious:
+      sy=1.0f-0.48f*envelope; rightSy=1.0f-0.30f*envelope;
+      dx=10.0f*envelope*smoothUnit(t/1100.0f);
+      break;
+    case Reaction::Sleepy: {
+      const float wave=0.5f-0.5f*cosf(progress*4.0f*3.14159265f);
+      sy=rightSy=1.0f-envelope*(0.35f+0.60f*wave);
+      dy=2.0f*envelope*wave;
+      break;
+    }
+    case Reaction::Wink: {
+      const float closure=smoothUnit(progress/0.25f)*
+                          (1.0f-smoothUnit((progress-0.55f)/0.25f));
+      sy=1.0f-0.97f*closure; rightSy=1;
+      break;
+    }
+    case Reaction::Focused:
+      sy=rightSy=1.0f-0.30f*envelope;
+      break;
+    case Reaction::Irritated:
+      sy=rightSy=1.0f-0.12f*envelope;
+      dx=5.0f*envelope*sinf(progress*2.0f*3.14159265f);
+      break;
+    case Reaction::Dance: {
+      const float beats=t*danceBpm/60000.0f;
+      dx=4.0f*envelope*sinf(beats*3.14159265f);
+      dy=3.0f*envelope*(0.5f-0.5f*cosf(beats*2.0f*3.14159265f));
+      break;
+    }
+    default: break;
+  }
+  // Reactions temporarily pull gaze to center without changing its saved target.
+  const float baseX=(screenWidth-eyeLwidthCurrent-spaceBetweenCurrent-eyeRwidthCurrent)/2.0f;
+  const float lx=baseX;
+  const float rx=baseX+eyeLwidthCurrent+spaceBetweenCurrent;
+  eyeLx += static_cast<int>((lx-eyeLx)*envelope);
+  eyeRx += static_cast<int>((rx-eyeRx)*envelope);
+  eyeLy += static_cast<int>(((screenHeight-eyeLheightCurrent)/2.0f-eyeLy)*envelope);
+  eyeRy += static_cast<int>(((screenHeight-eyeRheightCurrent)/2.0f-eyeRy)*envelope);
+  scaleEye(eyeLx,eyeLy,eyeLwidthCurrent,eyeLheightCurrent,sx,sy);
+  scaleEye(eyeRx,eyeRy,eyeRwidthCurrent,eyeRheightCurrent,sx,rightSy);
+  eyeLx+=static_cast<int>(dx); eyeRx+=static_cast<int>(dx);
+  eyeLy+=static_cast<int>(dy); eyeRy+=static_cast<int>(dy);
+}
 
 }; // end of class roboEyes
 

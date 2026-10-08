@@ -5,11 +5,9 @@
 #include <Adafruit_SSD1306.h>
 #include <Arduino.h>
 #include <Arduino_JSON.h>
-#include <FluxGarage_RoboEyes.h>
 #include <HTTPClient.h>
 #include <Wire.h>
-
-void initAccessPoint();
+#include <FluxGarage_RoboEyes.h>
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -28,18 +26,13 @@ const char *ntpServer = "pool.ntp.org";
 const unsigned long WEATHER_CACHE_TIMEOUT = 5 * 60 * 1000; // 5min
 
 bool buttonState = HIGH;
-
 bool isFirstLoopIteration = true;
-bool event1wasPlayed = 0;
-bool event2wasPlayed = 0;
-bool event3wasPlayed = 0;
 int buttonPressed = 0;
 int buttonHoldMillis = 0;
 int currentScreen = WEATHER_SCREEN;
 int logCount = 0;
 unsigned long lastButtonPress = 0;
 unsigned long lastWeatherUpdate = 0;
-unsigned long eventTimer;
 JSONVar openWeatherCache;
 String logLines[MAX_LOG_LINES];
 
@@ -201,90 +194,84 @@ void showWeather() {
 }
 
 void showRobot(bool firstBoot) {
-  long r;
+    using Reaction = roboeyes::Reaction;
 
-  if (firstBoot) {
-    // Startup robo eyes
-    roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT,
-                   100); // screen-width, screen-height, max framerate -
-                         // 60-100fps are good for smooth animations
-    roboEyes.setAutoblinker(
-        ON, 3, 2); // Start auto blinker animation cycle -> bool active, int
-                   // interval, int variation -> turn on/off, set interval
-                   // between each blink in full seconds, set range for random
-                   // interval variation in full seconds
-    roboEyes.setIdleMode(
-        ON, 2, 2); // Start idle animation cycle (eyes looking in random
-                   // directions) -> turn on/off, set interval between each eye
-                   // repositioning in full seconds, set range for random time
-                   // interval variation in full seconds
+    static bool initialized = false;
+    static bool wasReacting = false;
 
-    eventTimer = millis(); // start event timer from here
-  }
-  // roboEyes.setCuriosity(ON); // bool on/off -> when turned on, height of the
-  // outer eyes increases when moving to the very left or very right
+    static unsigned long lastAction = 0;
+    static unsigned long waitMs = 2000;
+    static unsigned long lastAngry = 0;
 
-  // Set horizontal or vertical flickering
-  // roboEyes.setHFlicker(ON, 2); // bool on/off, byte amplitude -> horizontal
-  // flicker: alternately displacing the eyes in the defined amplitude in pixels
-  // roboEyes.setVFlicker(ON, 2); // bool on/off, byte amplitude -> vertical
-  // flicker: alternately displacing the eyes in the defined amplitude in pixels
+    if (!initialized || firstBoot) {
+        if (!initialized) {
+            roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 60);
+            lastAngry = millis();
+            initialized = true;
+        }
 
-  // roboEyes.setPosition(DEFAULT); // eye position should be middle center
+        roboEyes.stopReaction();
 
-  roboEyes.update(); // update eyes drawings
+        roboEyes.setWidth(36, 36);
+        roboEyes.setHeight(36, 36);
+        roboEyes.setBorderradius(6, 6);
+        roboEyes.setSpacebetween(8);
 
-  // LOOPED ANIMATION SEQUENCE
-  // Do once after defined number of milliseconds
-  if (millis() >= eventTimer + 2000 && event1wasPlayed == 0) {
-    event1wasPlayed =
-        1; // flag variable to make sure the event will only be handled once
-    roboEyes.open(); // open eyes
-  }
+        roboEyes.setCuriosity(true);
+        roboEyes.setAutoblinker(true, 3, 4);
+        roboEyes.setIdleMode(true, 3, 3);
 
-  // Do once after defined number of milliseconds
-  if (millis() >= eventTimer + 4000 && event2wasPlayed == 0) {
-    r = random(0, 3);
-    event2wasPlayed =
-        1; // flag variable to make sure the event will only be handled once
-    roboEyes.setMood(HAPPY);
+        roboEyes.setMood(DEFAULT);
+        roboEyes.setPosition(DEFAULT);
+        roboEyes.open();
 
-    if (r == 1) {
-      roboEyes.anim_laugh();
+        wasReacting = false;
+        lastAction = millis();
+        waitMs = random(4000, 8001);
     }
 
-    if (r == 2) {
-      roboEyes.anim_confused();
-    }
-  }
-  // Do once after defined number of milliseconds
-  if (millis() >= eventTimer + 6000 && event3wasPlayed == 0) {
-    event3wasPlayed =
-        1; // flag variable to make sure the event will only be handled once
+    roboEyes.update();
 
-    if (random(0, 2)) {
-      roboEyes.setMood(TIRED);
-    } else {
-      roboEyes.setMood(ANGRY);
+    const unsigned long now = millis();
+
+    // after reaction, time for normal behaviour
+    if (wasReacting && !roboEyes.isReacting()) {
+        lastAction = now;
+        waitMs = random(5000, 11001);
     }
 
-    if (random(0, 2)) {
-      roboEyes.blink();
+    wasReacting = roboEyes.isReacting();
+
+    if (wasReacting || now - lastAction < waitMs) {
+        return;
     }
-  }
-  // Do once after defined number of milliseconds, then reset timer and flags to
-  // restart the whole animation sequence
-  if (millis() >= eventTimer + 8000) {
-    roboEyes.close(); // close eyes again
-    roboEyes.setMood(DEFAULT);
-    // Reset the timer and the event flags to restart the whole "complex
-    // animation loop"
-    eventTimer = millis(); // reset timer
-    event1wasPlayed = 0;   // reset flags
-    event2wasPlayed = 0;
-    event3wasPlayed = 0;
-  }
-  // END OF LOOPED ANIMATION SEQUENCE
+
+    lastAction = now;
+    waitMs = random(5000, 11001);
+
+    const long choice = random(100);
+
+    if (choice < 25) {
+        roboEyes.react(Reaction::Wink);
+    } else if (choice < 45) {
+        roboEyes.react(Reaction::Focused);
+    } else if (choice < 60) {
+        roboEyes.react(Reaction::Surprised);
+    } else if (choice < 72) {
+        roboEyes.react(Reaction::Suspicious);
+    } else if (choice < 80) {
+        roboEyes.react(Reaction::Sleepy);
+    } else if (choice < 88) {
+        // 6 seconds dance, standart temp 110 BPM
+        roboEyes.react(Reaction::Dance, 6000);
+    } else if (choice == 88 && now - lastAngry >= 120000UL) {
+        // very rare angry 
+        roboEyes.react(Reaction::Irritated, 1500);
+        lastAngry = now;
+    }
+    // default behaviour
+
+    wasReacting = roboEyes.isReacting();
 }
 
 void initTime() {
@@ -315,7 +302,6 @@ void setup() {
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  // init display
   Wire.begin(SDA_PIN, SCL_PIN);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
@@ -348,55 +334,81 @@ void setup() {
 }
 
 void loop() {
-  if (isWifiInAccessMode()) {
-    handleServer();
-  } else {
+    static int previousScreen = -1;
+
+    static bool lastRawState = HIGH;
+    static bool stableButtonState = HIGH;
+
+    static unsigned long debounceStarted = 0;
+    static unsigned long pressStarted = 0;
+
+    constexpr unsigned long DebounceMs = 40;
+
+    if (isWifiInAccessMode()) {
+        handleServer();
+
+        previousScreen = -1;
+        return;
+    }
+
     if (isFirstLoopIteration) {
-      initTime();
+        initTime();
 
-      if (buttonPressed == 0) {
-        addLog("Getting weather...");
-      }
-      isFirstLoopIteration = false;
+        if (currentScreen == WEATHER_SCREEN) {
+            addLog("Getting weather...");
+        }
+
+        isFirstLoopIteration = false;
     }
 
-    bool robotFirstTimeShow = false;
-    bool newState = digitalRead(BUTTON_PIN);
+    const unsigned long now = millis();
+    const bool rawState = digitalRead(BUTTON_PIN);
 
-    if (newState == LOW && buttonState == LOW) {
-      Serial.printf("HOLD %d\n", millis() - lastButtonPress);
-
-      if (millis() - lastButtonPress > RESET_HOLD_THRESHOLD) {
-        return setup();
-      }
-
-      buttonHoldMillis = millis();
+    if (rawState != lastRawState) {
+        lastRawState = rawState;
+        debounceStarted = now;
     }
 
-    if (newState == LOW && buttonState == HIGH &&
-        millis() - lastButtonPress > 300) {
-      currentScreen = (currentScreen + 1) % 3;
+    if (now - debounceStarted >= DebounceMs &&
+        rawState != stableButtonState) {
+        stableButtonState = rawState;
 
-      if (buttonPressed == ROBOT_SCREEN) {
-        robotFirstTimeShow = true;
-      }
+        if (stableButtonState == LOW) {
+            pressStarted = now;
 
-      lastButtonPress = millis();
-      Serial.printf("Switched to screen %d\n", currentScreen + 1);
+            currentScreen = (currentScreen + 1) % 3;
+
+            Serial.printf(
+                "Switched to screen %d\n",
+                currentScreen + 1
+            );
+        }
     }
 
-    buttonState = newState;
+    // reload
+    if (stableButtonState == LOW &&
+        rawState == LOW &&
+        now - pressStarted >=
+            static_cast<unsigned long>(RESET_HOLD_THRESHOLD)) {
+        ESP.restart();
+        return;
+    }
+
+    // true лише на першому кадрі нового екрана
+    const bool screenChanged = currentScreen != previousScreen;
+    previousScreen = currentScreen;
 
     switch (currentScreen) {
-    case WEATHER_SCREEN:
-      showWeather();
-      break;
-    case CLOCK_SCREEN:
-      showTime();
-      break;
-    case ROBOT_SCREEN:
-      showRobot(robotFirstTimeShow);
-      break;
+        case WEATHER_SCREEN:
+            showWeather();
+            break;
+
+        case CLOCK_SCREEN:
+            showTime();
+            break;
+
+        case ROBOT_SCREEN:
+            showRobot(screenChanged);
+            break;
     }
-  }
 }
