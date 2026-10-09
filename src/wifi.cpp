@@ -2,50 +2,50 @@
 #include <WiFi.h>
 
 void initAccessPoint() {
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(WIFI_NAME, "");
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(WIFI_NAME, "");
 
-  //   IPAddress ip = WiFi.softAPIP();
-  //   addLog(ip.toString());
+    //   IPAddress ip = WiFi.softAPIP();
+    //   addLog(ip.toString());
 }
 
 bool wifiConnectDevMode() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  int retries = 0;
+    int retries = 0;
 
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
-    delay(500);
-    retries++;
-  }
+    while (WiFi.status() != WL_CONNECTED && retries < 20) {
+        delay(500);
+        retries++;
+    }
 
-  return WiFi.status() == WL_CONNECTED;
+    return WiFi.status() == WL_CONNECTED;
 }
 
 bool wifiConnect(String ssid, String password) {
-  WiFi.softAPdisconnect(true);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
 
-  int retries = 0;
+    int retries = 0;
 
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
-    delay(500);
-    retries++;
-  }
+    while (WiFi.status() != WL_CONNECTED && retries < 20) {
+        delay(500);
+        retries++;
+    }
 
-  if (WiFi.status() == WL_CONNECTED) {
-    return true;
-  }
+    if (WiFi.status() == WL_CONNECTED) {
+        return true;
+    }
 
-  return false;
+    return false;
 }
 
 bool isWifiInAccessMode() {
-  return WIFI_AP == WiFi.getMode();
+    return WIFI_AP == WiFi.getMode();
 }
 
-String getIp() { 
-    return isWifiInAccessMode() ? WiFi.softAPIP().toString() : WiFi.localIP().toString(); 
+String getIp() {
+    return isWifiInAccessMode() ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
 }

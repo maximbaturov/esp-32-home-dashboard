@@ -36,161 +36,210 @@ unsigned long lastWeatherUpdate = 0;
 JSONVar openWeatherCache;
 String logLines[MAX_LOG_LINES];
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+// Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET, 100000UL, 100000UL);
+Adafruit_SSD1306 display(
+    SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET,
+    50000UL, 50000UL
+);
 
 RoboEyes<Adafruit_SSD1306> roboEyes(display);
 
 void addLog(const String &msg) {
-  if (logCount >= MAX_LOG_LINES) {
-    for (int i = 1; i < MAX_LOG_LINES; i++) {
-      logLines[i - 1] = logLines[i];
+    if (logCount >= MAX_LOG_LINES) {
+        for (int i = 1; i < MAX_LOG_LINES; i++) {
+            logLines[i - 1] = logLines[i];
+        }
+        logLines[MAX_LOG_LINES - 1] = msg;
+    } else {
+        logLines[logCount++] = msg;
     }
-    logLines[MAX_LOG_LINES - 1] = msg;
-  } else {
-    logLines[logCount++] = msg;
-  }
 
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  for (int i = 0; i < logCount; i++) {
-    display.setCursor(0, i * 10);
-    display.print(logLines[i]);
-  }
-  display.display();
-  Serial.println(msg);
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    for (int i = 0; i < logCount; i++) {
+        display.setCursor(0, i * 10);
+        display.print(logLines[i]);
+    }
+    display.display();
+    Serial.println(msg);
 }
 
-void showTime() {
-  struct tm timeinfo;
+void showTime(bool forceRedraw = false) {
+    static String lastRenderedTime;
+    struct tm timeinfo;
+    const bool available = getLocalTime(&timeinfo, 0);
+    char clockText[6] = {};
+    char dateText[11] = {};
+    String text = "Time unavailable";
 
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setTextColor(SSD1306_WHITE);
-
-  if (getLocalTime(&timeinfo)) {
-    char buffer[16];
-    strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
-
-    display.setTextSize(4);
-    display.setCursor(0, 0);
-    display.println(buffer);
-
-    strftime(buffer, sizeof(buffer), "%d-%m-%Y", &timeinfo);
-    display.setTextSize(2);
-    display.setCursor(0, 48);
-    display.println(buffer);
-  } else {
-    display.setTextSize(1);
-    display.setCursor(10, 10);
-    display.println("сan't show time");
-  }
-
-  display.display();
+    if (available) {
+        strftime(clockText, sizeof(clockText), "%H:%M", &timeinfo);
+        strftime(dateText, sizeof(dateText), "%d-%m-%Y", &timeinfo);
+        text = String(dateText) + " " + clockText;
+    }
+    if (!forceRedraw && text == lastRenderedTime) {
+        return;
+    }
+    lastRenderedTime = text;
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    if (available) {
+        display.setTextSize(4);
+        display.setCursor(0, 0);
+        display.print(clockText);
+        display.setTextSize(2);
+        display.setCursor(0, 48);
+        display.print(dateText);
+    } else {
+        display.setTextSize(1);
+        display.setCursor(0, 20);
+        display.print(text);
+    }
+    display.display();
 }
 
 JSONVar getWeather() {
-  HTTPClient http;
+    HTTPClient http;
 
-  String response = "{}";
-  String url = "https://api.openweathermap.org/data/2.5/"
-               "weather?lat=49.83935806420136&lon=24.02160867276371&appid={"
-               "OPEN_WEATHER_API_KEY}&units=metric";
+    String response = "{}";
+    String url = "https://api.openweathermap.org/data/2.5/"
+                 "weather?lat=49.83935806420136&lon=24.02160867276371&appid={"
+                 "OPEN_WEATHER_API_KEY}&units=metric";
 
-  url.replace("{OPEN_WEATHER_API_KEY}", OPEN_WEATHER_API_KEY);
+    url.replace("{OPEN_WEATHER_API_KEY}", OPEN_WEATHER_API_KEY);
 
-  http.begin(url.c_str());
+    http.begin(url.c_str());
 
-  int httpResponseCode = http.GET();
+    int httpResponseCode = http.GET();
 
-  if (httpResponseCode != 200) {
-    Serial.print("Error code: ");
-    Serial.println(httpResponseCode);
+    if (httpResponseCode != 200) {
+        Serial.print("Error code: ");
+        Serial.println(httpResponseCode);
 
-    return JSON.parse("{}");
-  }
+        http.end();
+        return JSON.parse("{}");
+    }
 
-  JSONVar openWeather = JSON.parse(http.getString());
+    JSONVar openWeather = JSON.parse(http.getString());
 
-  http.end();
+    http.end();
 
-  if (JSON.typeof(openWeather) == "undefined") {
-    Serial.println("Parsing input failed!");
-    return JSON.parse("{}");
-  }
+    if (JSON.typeof(openWeather) == "undefined") {
+        Serial.println("Parsing input failed!");
+        return JSON.parse("{}");
+    }
 
-  return openWeather;
+    return openWeather;
 }
 
-void showWeather() {
-  JSONVar openWeather;
-  unsigned long now = millis();
+void showWeather(bool forceRedraw = false) {
+    static bool cacheInitialized = false;
+    static String lastRenderedWeather;
+    const unsigned long now = millis();
 
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setTextColor(SSD1306_WHITE);
+    if (!cacheInitialized || now - lastWeatherUpdate >= WEATHER_CACHE_TIMEOUT) {
+        Serial.println("request weather");
+        openWeatherCache = getWeather();
+        lastWeatherUpdate = millis();
+        cacheInitialized = true;
+    }
+    JSONVar openWeather = openWeatherCache;
 
-  if (openWeatherCache == JSONVar() ||
-      now - lastWeatherUpdate > WEATHER_CACHE_TIMEOUT) {
-    Serial.println("request weather");
-    openWeatherCache = getWeather();
-    openWeather = openWeatherCache;
-    lastWeatherUpdate = millis();
-  } else {
-    Serial.println("cache weather");
-    openWeather = openWeatherCache;
-  }
+    // Validate before indexing arrays or converting strings for strcmp().
+    const bool valid =
+        JSON.typeof(openWeather) == "object" &&
+        JSON.typeof(openWeather["weather"]) == "array" &&
+        openWeather["weather"].length() > 0 &&
+        JSON.typeof(openWeather["weather"][0]["icon"]) == "string" &&
+        JSON.typeof(openWeather["weather"][0]["main"]) == "string" &&
+        JSON.typeof(openWeather["main"]) == "object" &&
+        JSON.typeof(openWeather["main"]["temp"]) == "number" &&
+        JSON.typeof(openWeather["main"]["feels_like"]) == "number" &&
+        JSON.typeof(openWeather["main"]["humidity"]) == "number" &&
+        JSON.typeof(openWeather["wind"]) == "object" &&
+        JSON.typeof(openWeather["wind"]["speed"]) == "number";
 
-  const char *iconCode = (const char *)openWeather["weather"][0]["icon"];
-  const char *message = (const char *)openWeather["weather"][0]["main"];
-  double temperature = (double)openWeather["main"]["temp"];
-  double feels = (double)openWeather["main"]["feels_like"];
-  double wind_speed = (double)openWeather["wind"]["speed"];
-  int humidity = (int)openWeather["main"]["humidity"];
+    if (!valid) {
+        const String text = "Weather unavailable";
+        if (forceRedraw || text != lastRenderedWeather) {
+            display.clearDisplay();
+            display.setTextSize(1);
+            display.setTextColor(SSD1306_WHITE);
+            display.setCursor(0, 20);
+            display.print(text);
+            display.display();
+            lastRenderedWeather = text;
+        }
+        return;
+    }
 
-  const unsigned char *iconBitmap = sunny;
+    const char *iconCode = (const char *)openWeather["weather"][0]["icon"];
+    const char *message = (const char *)openWeather["weather"][0]["main"];
+    double temperature = (double)openWeather["main"]["temp"];
+    double feels = (double)openWeather["main"]["feels_like"];
+    double wind_speed = (double)openWeather["wind"]["speed"];
+    int humidity = (int)openWeather["main"]["humidity"];
 
-  if (strcmp(iconCode, "01d") == 0 || strcmp(iconCode, "01n") == 0) {
-    iconBitmap = sunny;
-  } else if (strcmp(iconCode, "02d") == 0 || strcmp(iconCode, "02n") == 0) {
-    iconBitmap = sunny_cloudy;
-  } else if (strcmp(iconCode, "03d") == 0 || strcmp(iconCode, "03n") == 0 ||
-             strcmp(iconCode, "04d") == 0 || strcmp(iconCode, "04n") == 0) {
-    iconBitmap = cloudy;
-  } else if (strcmp(iconCode, "09d") == 0 || strcmp(iconCode, "09n") == 0 ||
-             strcmp(iconCode, "10d") == 0 || strcmp(iconCode, "10n") == 0) {
-    iconBitmap = rainy;
-  } else if (strcmp(iconCode, "11d") == 0 || strcmp(iconCode, "11n") == 0) {
-    iconBitmap = thunder;
-  } else if (strcmp(iconCode, "13d") == 0 || strcmp(iconCode, "13n") == 0) {
-    iconBitmap = snow;
-  } else if (strcmp(iconCode, "50d") == 0 || strcmp(iconCode, "50n") == 0) {
-    iconBitmap = wind;
-  }
+    const unsigned char *iconBitmap = sunny;
 
-  display.drawBitmap(0, 0, iconBitmap, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2,
-                     SSD1306_WHITE);
+    if (strcmp(iconCode, "01d") == 0 || strcmp(iconCode, "01n") == 0) {
+        iconBitmap = sunny;
+    } else if (strcmp(iconCode, "02d") == 0 || strcmp(iconCode, "02n") == 0) {
+        iconBitmap = sunny_cloudy;
+    } else if (strcmp(iconCode, "03d") == 0 || strcmp(iconCode, "03n") == 0 ||
+               strcmp(iconCode, "04d") == 0 || strcmp(iconCode, "04n") == 0) {
+        iconBitmap = cloudy;
+    } else if (strcmp(iconCode, "09d") == 0 || strcmp(iconCode, "09n") == 0 ||
+               strcmp(iconCode, "10d") == 0 || strcmp(iconCode, "10n") == 0) {
+        iconBitmap = rainy;
+    } else if (strcmp(iconCode, "11d") == 0 || strcmp(iconCode, "11n") == 0) {
+        iconBitmap = thunder;
+    } else if (strcmp(iconCode, "13d") == 0 || strcmp(iconCode, "13n") == 0) {
+        iconBitmap = snow;
+    } else if (strcmp(iconCode, "50d") == 0 || strcmp(iconCode, "50n") == 0) {
+        iconBitmap = wind;
+    }
 
-  display.setTextSize(1);
-  display.setCursor(40, 0);
-  display.println(message);
+    // Compare only the fields actually shown, at their displayed precision.
+    char values[160];
+    snprintf(values, sizeof(values), "Temp: %.1f|Feels: %.1f|Wind: %.1fms|Humidity: %d%%",
+             temperature, feels, wind_speed, humidity);
+    const String renderedWeather = String(message) + "|" + values;
+    static const unsigned char *lastIconBitmap = nullptr;
+    if (!forceRedraw && renderedWeather == lastRenderedWeather &&
+        iconBitmap == lastIconBitmap) {
+        return;
+    }
+    lastRenderedWeather = renderedWeather;
+    lastIconBitmap = iconBitmap;
 
-  display.setCursor(40, 16);
-  display.printf("Temp: %.1f", temperature);
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setTextColor(SSD1306_WHITE);
 
-  display.setCursor(40, 26);
-  display.printf("Feels: %.1f", feels);
+    display.drawBitmap(0, 0, iconBitmap, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2, SSD1306_WHITE);
 
-  display.setCursor(40, 36);
-  display.printf("Wind: %.1fms", wind_speed);
+    display.setTextSize(1);
+    display.setCursor(40, 0);
+    display.println(message);
 
-  display.setCursor(40, 46);
-  display.printf("Humidity: %d%%", humidity);
+    display.setCursor(40, 16);
+    display.printf("Temp: %.1f", temperature);
 
-  display.setTextSize(1);
-  display.setCursor(0, 56);
+    display.setCursor(40, 26);
+    display.printf("Feels: %.1f", feels);
 
-  display.display();
+    display.setCursor(40, 36);
+    display.printf("Wind: %.1fms", wind_speed);
+
+    display.setCursor(40, 46);
+    display.printf("Humidity: %d%%", humidity);
+
+    display.setTextSize(1);
+    display.setCursor(0, 56);
+
+    display.display();
 }
 
 void showRobot(bool firstBoot) {
@@ -265,7 +314,7 @@ void showRobot(bool firstBoot) {
         // 6 seconds dance, standart temp 110 BPM
         roboEyes.react(Reaction::Dance, 6000);
     } else if (choice == 88 && now - lastAngry >= 120000UL) {
-        // very rare angry 
+        // very rare angry
         roboEyes.react(Reaction::Irritated, 1500);
         lastAngry = now;
     }
@@ -275,69 +324,85 @@ void showRobot(bool firstBoot) {
 }
 
 void initTime() {
-  addLog("Getting time...");
-  configTime(0, 0, ntpServer);
+    addLog("Getting time...");
+    configTime(0, 0, ntpServer);
 
-  setenv("TZ", "EET-2EEST,M3.5.0/3,M10.5.0/4", 1);
-  tzset();
+    setenv("TZ", "EET-2EEST,M3.5.0/3,M10.5.0/4", 1);
+    tzset();
 
-  struct tm timeinfo;
-  int retries = 0;
-  while (!getLocalTime(&timeinfo) && retries < 10) {
-    addLog("Waiting for NTP...");
-    delay(1000);
-    retries++;
-  }
+    struct tm timeinfo;
+    int retries = 0;
+    while (!getLocalTime(&timeinfo) && retries < 10) {
+        addLog("Waiting for NTP...");
+        delay(1000);
+        retries++;
+    }
 
-  if (retries == 10) {
-    addLog("Failed to get time");
-  } else {
-    addLog("Time updated!");
-    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-  }
+    if (retries == 10) {
+        addLog("Failed to get time");
+    } else {
+        addLog("Time updated!");
+        Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+    }
 }
 
 void setup() {
-  Serial.begin(115200);
+    Serial.begin(115200);
 
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  Wire.begin(SDA_PIN, SCL_PIN);
-
-  if (DEBUG_MODE == 1) {
-    delay(5000);
-  } 
-
-  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
-    Serial.println(F("SSD1306 init failed"));
-    for (;;)
-      ;
-  }
-
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-
-  addLog("PopBot wakes up");
-
-  if (DEBUG_MODE == 1) {
-    String msg = "WiFi connected";
-    bool isConnected = wifiConnectDevMode();
-
-    if (!isConnected) {
-      msg = "WiFi is not connected";
+    if (DEBUG_MODE == 1) {
+        delay(5000);
     }
 
-    addLog(msg);
-  } else {
-    initAccessPoint();
-    addLog("WiFi: " + String(WIFI_NAME));
-    addLog("IP: " + getIp());
+    if (!Wire.begin(SDA_PIN, SCL_PIN, 50000)) {
+        Serial.println("I2C initialization failed");
+        while (true) {
+            delay(1000);
+        }
+    }
 
-    initServer();
-  }
+    if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR, true, false)) {
+        Serial.println("Display initialization failed");
+        while (true) {
+            delay(1000);
+        }
+    }
+
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+
+    addLog("PopBot wakes up");
+
+    if (DEBUG_MODE == 1) {
+        String msg = "WiFi connected";
+        bool isConnected = wifiConnectDevMode();
+
+        if (!isConnected) {
+            msg = "WiFi is not connected";
+        }
+
+        addLog(msg);
+    } else {
+        initAccessPoint();
+        addLog("WiFi: " + String(WIFI_NAME));
+        addLog("IP: " + getIp());
+
+        initServer();
+    }
 }
 
 void loop() {
+    static int previousButtonLevel = -1;
+    const int buttonLevel = digitalRead(BUTTON_PIN);
+
+    if (buttonLevel != previousButtonLevel) {
+        previousButtonLevel = buttonLevel;
+
+        Serial.printf("Button GPIO%d: %s\n", BUTTON_PIN,
+                      buttonLevel == LOW ? "PRESSED" : "RELEASED");
+    }
+
     static int previousScreen = -1;
 
     static bool lastRawState = HIGH;
@@ -373,8 +438,7 @@ void loop() {
         debounceStarted = now;
     }
 
-    if (now - debounceStarted >= DebounceMs &&
-        rawState != stableButtonState) {
+    if (now - debounceStarted >= DebounceMs && rawState != stableButtonState) {
         stableButtonState = rawState;
 
         if (stableButtonState == LOW) {
@@ -382,18 +446,13 @@ void loop() {
 
             currentScreen = (currentScreen + 1) % 3;
 
-            Serial.printf(
-                "Switched to screen %d\n",
-                currentScreen + 1
-            );
+            Serial.printf("Switched to screen %d\n", currentScreen + 1);
         }
     }
 
     // reload
-    if (stableButtonState == LOW &&
-        rawState == LOW &&
-        now - pressStarted >=
-            static_cast<unsigned long>(RESET_HOLD_THRESHOLD)) {
+    if (stableButtonState == LOW && rawState == LOW &&
+        now - pressStarted >= static_cast<unsigned long>(RESET_HOLD_THRESHOLD)) {
         ESP.restart();
         return;
     }
@@ -403,16 +462,20 @@ void loop() {
     previousScreen = currentScreen;
 
     switch (currentScreen) {
-        case WEATHER_SCREEN:
-            showWeather();
-            break;
+    case WEATHER_SCREEN:
+        if (screenChanged || millis() - lastWeatherUpdate >= WEATHER_CACHE_TIMEOUT) {
+            showWeather(screenChanged);
+        }
+        break;
 
-        case CLOCK_SCREEN:
-            showTime();
-            break;
+    case CLOCK_SCREEN:
+        showTime(screenChanged);
+        break;
 
-        case ROBOT_SCREEN:
-            showRobot(screenChanged);
-            break;
+    case ROBOT_SCREEN:
+        showRobot(screenChanged);
+        break;
     }
+
+    delay(1);
 }

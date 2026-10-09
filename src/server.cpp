@@ -4,15 +4,15 @@
 WebServer server(80);
 
 void httpIndex() {
-  if (server.hasArg("name") && server.hasArg("password")) {
-    String name = server.arg("name");
-    String password = server.arg("password");
+    if (server.hasArg("name") && server.hasArg("password")) {
+        String name = server.arg("name");
+        String password = server.arg("password");
 
-    if (!wifiConnect(name, password)) {
-      initAccessPoint();
-    }
-  } else {
-    String html = R"rawliteral(
+        if (!wifiConnect(name, password)) {
+            initAccessPoint();
+        }
+    } else {
+        String html = R"rawliteral(
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -78,13 +78,15 @@ void httpIndex() {
       </html>
       )rawliteral";
 
-    server.send(200, "text/html", html);
-  }
+        server.send(200, "text/html", html);
+    }
 }
 
 void initServer() {
-  server.on("/", httpIndex);
-  server.begin();
+    server.on("/", httpIndex);
+    server.begin();
 }
 
-void handleServer() { server.handleClient(); }
+void handleServer() {
+    server.handleClient();
+}
