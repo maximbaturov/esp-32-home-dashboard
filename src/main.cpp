@@ -1,6 +1,4 @@
 #include "bmp.h"
-#include "server.h"
-#include "wifi.h"
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Arduino.h>
@@ -18,29 +16,11 @@
 #define BUTTON_PIN 6
 #define MAX_LOG_LINES 6
 
-const int RESET_HOLD_THRESHOLD = 5 * 1000; // 5sec
-const int WEATHER_SCREEN = 0;
-const int CLOCK_SCREEN = 1;
-const int ROBOT_SCREEN = 2;
-const char *ntpServer = "pool.ntp.org";
-const unsigned long WEATHER_CACHE_TIMEOUT = 5 * 60 * 1000; // 5min
-
-bool buttonState = HIGH;
 bool isFirstLoopIteration = true;
-int buttonPressed = 0;
-int buttonHoldMillis = 0;
-int currentScreen = WEATHER_SCREEN;
 int logCount = 0;
-unsigned long lastButtonPress = 0;
-unsigned long lastWeatherUpdate = 0;
-JSONVar openWeatherCache;
 String logLines[MAX_LOG_LINES];
 
-// Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET, 100000UL, 100000UL);
-Adafruit_SSD1306 display(
-    SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET,
-    50000UL, 50000UL
-);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET, 100000UL, 100000UL);
 
 RoboEyes<Adafruit_SSD1306> roboEyes(display);
 
@@ -65,197 +45,27 @@ void addLog(const String &msg) {
     Serial.println(msg);
 }
 
-void showTime(bool forceRedraw = false) {
-    static String lastRenderedTime;
-    struct tm timeinfo;
-    const bool available = getLocalTime(&timeinfo, 0);
-    char clockText[6] = {};
-    char dateText[11] = {};
-    String text = "Time unavailable";
-
-    if (available) {
-        strftime(clockText, sizeof(clockText), "%H:%M", &timeinfo);
-        strftime(dateText, sizeof(dateText), "%d-%m-%Y", &timeinfo);
-        text = String(dateText) + " " + clockText;
-    }
-    if (!forceRedraw && text == lastRenderedTime) {
-        return;
-    }
-    lastRenderedTime = text;
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-    if (available) {
-        display.setTextSize(4);
-        display.setCursor(0, 0);
-        display.print(clockText);
-        display.setTextSize(2);
-        display.setCursor(0, 48);
-        display.print(dateText);
-    } else {
-        display.setTextSize(1);
-        display.setCursor(0, 20);
-        display.print(text);
-    }
-    display.display();
-}
-
-JSONVar getWeather() {
-    HTTPClient http;
-
-    String response = "{}";
-    String url = "https://api.openweathermap.org/data/2.5/"
-                 "weather?lat=49.83935806420136&lon=24.02160867276371&appid={"
-                 "OPEN_WEATHER_API_KEY}&units=metric";
-
-    url.replace("{OPEN_WEATHER_API_KEY}", OPEN_WEATHER_API_KEY);
-
-    http.begin(url.c_str());
-
-    int httpResponseCode = http.GET();
-
-    if (httpResponseCode != 200) {
-        Serial.print("Error code: ");
-        Serial.println(httpResponseCode);
-
-        http.end();
-        return JSON.parse("{}");
-    }
-
-    JSONVar openWeather = JSON.parse(http.getString());
-
-    http.end();
-
-    if (JSON.typeof(openWeather) == "undefined") {
-        Serial.println("Parsing input failed!");
-        return JSON.parse("{}");
-    }
-
-    return openWeather;
-}
-
-void showWeather(bool forceRedraw = false) {
-    static bool cacheInitialized = false;
-    static String lastRenderedWeather;
-    const unsigned long now = millis();
-
-    if (!cacheInitialized || now - lastWeatherUpdate >= WEATHER_CACHE_TIMEOUT) {
-        Serial.println("request weather");
-        openWeatherCache = getWeather();
-        lastWeatherUpdate = millis();
-        cacheInitialized = true;
-    }
-    JSONVar openWeather = openWeatherCache;
-
-    // Validate before indexing arrays or converting strings for strcmp().
-    const bool valid =
-        JSON.typeof(openWeather) == "object" &&
-        JSON.typeof(openWeather["weather"]) == "array" &&
-        openWeather["weather"].length() > 0 &&
-        JSON.typeof(openWeather["weather"][0]["icon"]) == "string" &&
-        JSON.typeof(openWeather["weather"][0]["main"]) == "string" &&
-        JSON.typeof(openWeather["main"]) == "object" &&
-        JSON.typeof(openWeather["main"]["temp"]) == "number" &&
-        JSON.typeof(openWeather["main"]["feels_like"]) == "number" &&
-        JSON.typeof(openWeather["main"]["humidity"]) == "number" &&
-        JSON.typeof(openWeather["wind"]) == "object" &&
-        JSON.typeof(openWeather["wind"]["speed"]) == "number";
-
-    if (!valid) {
-        const String text = "Weather unavailable";
-        if (forceRedraw || text != lastRenderedWeather) {
-            display.clearDisplay();
-            display.setTextSize(1);
-            display.setTextColor(SSD1306_WHITE);
-            display.setCursor(0, 20);
-            display.print(text);
-            display.display();
-            lastRenderedWeather = text;
-        }
-        return;
-    }
-
-    const char *iconCode = (const char *)openWeather["weather"][0]["icon"];
-    const char *message = (const char *)openWeather["weather"][0]["main"];
-    double temperature = (double)openWeather["main"]["temp"];
-    double feels = (double)openWeather["main"]["feels_like"];
-    double wind_speed = (double)openWeather["wind"]["speed"];
-    int humidity = (int)openWeather["main"]["humidity"];
-
-    const unsigned char *iconBitmap = sunny;
-
-    if (strcmp(iconCode, "01d") == 0 || strcmp(iconCode, "01n") == 0) {
-        iconBitmap = sunny;
-    } else if (strcmp(iconCode, "02d") == 0 || strcmp(iconCode, "02n") == 0) {
-        iconBitmap = sunny_cloudy;
-    } else if (strcmp(iconCode, "03d") == 0 || strcmp(iconCode, "03n") == 0 ||
-               strcmp(iconCode, "04d") == 0 || strcmp(iconCode, "04n") == 0) {
-        iconBitmap = cloudy;
-    } else if (strcmp(iconCode, "09d") == 0 || strcmp(iconCode, "09n") == 0 ||
-               strcmp(iconCode, "10d") == 0 || strcmp(iconCode, "10n") == 0) {
-        iconBitmap = rainy;
-    } else if (strcmp(iconCode, "11d") == 0 || strcmp(iconCode, "11n") == 0) {
-        iconBitmap = thunder;
-    } else if (strcmp(iconCode, "13d") == 0 || strcmp(iconCode, "13n") == 0) {
-        iconBitmap = snow;
-    } else if (strcmp(iconCode, "50d") == 0 || strcmp(iconCode, "50n") == 0) {
-        iconBitmap = wind;
-    }
-
-    // Compare only the fields actually shown, at their displayed precision.
-    char values[160];
-    snprintf(values, sizeof(values), "Temp: %.1f|Feels: %.1f|Wind: %.1fms|Humidity: %d%%",
-             temperature, feels, wind_speed, humidity);
-    const String renderedWeather = String(message) + "|" + values;
-    static const unsigned char *lastIconBitmap = nullptr;
-    if (!forceRedraw && renderedWeather == lastRenderedWeather &&
-        iconBitmap == lastIconBitmap) {
-        return;
-    }
-    lastRenderedWeather = renderedWeather;
-    lastIconBitmap = iconBitmap;
-
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setTextColor(SSD1306_WHITE);
-
-    display.drawBitmap(0, 0, iconBitmap, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2, SSD1306_WHITE);
-
-    display.setTextSize(1);
-    display.setCursor(40, 0);
-    display.println(message);
-
-    display.setCursor(40, 16);
-    display.printf("Temp: %.1f", temperature);
-
-    display.setCursor(40, 26);
-    display.printf("Feels: %.1f", feels);
-
-    display.setCursor(40, 36);
-    display.printf("Wind: %.1fms", wind_speed);
-
-    display.setCursor(40, 46);
-    display.printf("Humidity: %d%%", humidity);
-
-    display.setTextSize(1);
-    display.setCursor(0, 56);
-
-    display.display();
-}
-
 void showRobot(bool firstBoot) {
     using Reaction = roboeyes::Reaction;
 
     static bool initialized = false;
     static bool wasReacting = false;
+    static Reaction lastReaction = Reaction::None;
 
-    static unsigned long lastAction = 0;
-    static unsigned long waitMs = 2000;
+    static unsigned long idleStarted = 0;
+    static unsigned long idleDuration = 0;
     static unsigned long lastAngry = 0;
+    static unsigned long lastDance = 0;
+
+    constexpr unsigned long AngryCooldown = 5UL * 60 * 1000;
+    constexpr unsigned long DanceCooldown = 90UL * 1000;
 
     if (!initialized || firstBoot) {
         if (!initialized) {
             roboEyes.begin(SCREEN_WIDTH, SCREEN_HEIGHT, 60);
+
             lastAngry = millis();
+            lastDance = millis();
             initialized = true;
         }
 
@@ -267,83 +77,102 @@ void showRobot(bool firstBoot) {
         roboEyes.setSpacebetween(8);
 
         roboEyes.setCuriosity(true);
-        roboEyes.setAutoblinker(true, 3, 4);
-        roboEyes.setIdleMode(true, 3, 3);
+        roboEyes.setAutoblinker(true, 4, 3);
+        roboEyes.setIdleMode(true, 4, 3);
 
         roboEyes.setMood(DEFAULT);
         roboEyes.setPosition(DEFAULT);
         roboEyes.open();
 
+        lastReaction = Reaction::None;
         wasReacting = false;
-        lastAction = millis();
-        waitMs = random(4000, 8001);
+        idleStarted = millis();
+        idleDuration = random(6000, 10001);
     }
 
     roboEyes.update();
 
     const unsigned long now = millis();
+    const bool reacting = roboEyes.isReacting();
 
-    // after reaction, time for normal behaviour
-    if (wasReacting && !roboEyes.isReacting()) {
-        lastAction = now;
-        waitMs = random(5000, 11001);
+    // Start the idle interval after the reaction finishes.
+    if (wasReacting && !reacting) {
+        idleStarted = now;
+
+        if (lastReaction == Reaction::Sleepy) {
+            idleDuration = random(12000, 20001);
+        } else if (lastReaction == Reaction::Dance ||
+                   lastReaction == Reaction::Irritated) {
+            idleDuration = random(10000, 18001);
+        } else {
+            idleDuration = random(5000, 12001);
+        }
     }
 
-    wasReacting = roboEyes.isReacting();
+    wasReacting = reacting;
 
-    if (wasReacting || now - lastAction < waitMs) {
+    if (reacting || now - idleStarted < idleDuration) {
         return;
     }
 
-    lastAction = now;
-    waitMs = random(5000, 11001);
+    // Schedule another decision even if this reaction is skipped.
+    idleStarted = now;
+    idleDuration = random(4000, 8001);
 
     const long choice = random(100);
+    Reaction next = Reaction::None;
 
-    if (choice < 25) {
-        roboEyes.react(Reaction::Wink);
-    } else if (choice < 45) {
-        roboEyes.react(Reaction::Focused);
-    } else if (choice < 60) {
-        roboEyes.react(Reaction::Surprised);
-    } else if (choice < 72) {
-        roboEyes.react(Reaction::Suspicious);
-    } else if (choice < 80) {
-        roboEyes.react(Reaction::Sleepy);
-    } else if (choice < 88) {
-        // 6 seconds dance, standart temp 110 BPM
-        roboEyes.react(Reaction::Dance, 6000);
-    } else if (choice == 88 && now - lastAngry >= 120000UL) {
-        // very rare angry
-        roboEyes.react(Reaction::Irritated, 1500);
-        lastAngry = now;
-    }
-    // default behaviour
+    if (choice < 30) {
+        // Keep normal blinking, gaze movement, and curiosity.
+        return;
+    } else if (choice < 53) {
+        next = Reaction::Wink;
+    } else if (choice < 73) {
+        next = Reaction::Focused;
+    } else if (choice < 84) {
+        next = Reaction::Suspicious;
+    } else if (choice < 91) {
+        next = Reaction::Surprised;
+    } else if (choice < 96) {
+        next = Reaction::Sleepy;
+    } else if (choice < 99) {
+        if (now - lastDance < DanceCooldown) {
+            return;
+        }
 
-    wasReacting = roboEyes.isReacting();
-}
-
-void initTime() {
-    addLog("Getting time...");
-    configTime(0, 0, ntpServer);
-
-    setenv("TZ", "EET-2EEST,M3.5.0/3,M10.5.0/4", 1);
-    tzset();
-
-    struct tm timeinfo;
-    int retries = 0;
-    while (!getLocalTime(&timeinfo) && retries < 10) {
-        addLog("Waiting for NTP...");
-        delay(1000);
-        retries++;
-    }
-
-    if (retries == 10) {
-        addLog("Failed to get time");
+        next = Reaction::Dance;
     } else {
-        addLog("Time updated!");
-        Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+        if (now - lastAngry < AngryCooldown) {
+            return;
+        }
+
+        next = Reaction::Irritated;
     }
+
+    // Avoid repeating the previous reaction.
+    if (next == lastReaction) {
+        return;
+    }
+
+    switch (next) {
+        case Reaction::Dance:
+            roboEyes.react(next, random(4000, 6501));
+            lastDance = now;
+            break;
+
+        case Reaction::Irritated:
+            roboEyes.react(next, random(900, 1401));
+            lastAngry = now;
+            break;
+
+        default:
+            // Use the library's default reaction duration.
+            roboEyes.react(next);
+            break;
+    }
+
+    lastReaction = next;
+    wasReacting = roboEyes.isReacting();
 }
 
 void setup() {
@@ -373,109 +202,11 @@ void setup() {
     display.setTextColor(SSD1306_WHITE);
 
     addLog("PopBot wakes up");
-
-    if (DEBUG_MODE == 1) {
-        String msg = "WiFi connected";
-        bool isConnected = wifiConnectDevMode();
-
-        if (!isConnected) {
-            msg = "WiFi is not connected";
-        }
-
-        addLog(msg);
-    } else {
-        initAccessPoint();
-        addLog("WiFi: " + String(WIFI_NAME));
-        addLog("IP: " + getIp());
-
-        initServer();
-    }
 }
 
 void loop() {
-    static int previousButtonLevel = -1;
-    const int buttonLevel = digitalRead(BUTTON_PIN);
+    showRobot(isFirstLoopIteration);
 
-    if (buttonLevel != previousButtonLevel) {
-        previousButtonLevel = buttonLevel;
-
-        Serial.printf("Button GPIO%d: %s\n", BUTTON_PIN,
-                      buttonLevel == LOW ? "PRESSED" : "RELEASED");
-    }
-
-    static int previousScreen = -1;
-
-    static bool lastRawState = HIGH;
-    static bool stableButtonState = HIGH;
-
-    static unsigned long debounceStarted = 0;
-    static unsigned long pressStarted = 0;
-
-    constexpr unsigned long DebounceMs = 40;
-
-    if (isWifiInAccessMode()) {
-        handleServer();
-
-        previousScreen = -1;
-        return;
-    }
-
-    if (isFirstLoopIteration) {
-        initTime();
-
-        if (currentScreen == WEATHER_SCREEN) {
-            addLog("Getting weather...");
-        }
-
-        isFirstLoopIteration = false;
-    }
-
-    const unsigned long now = millis();
-    const bool rawState = digitalRead(BUTTON_PIN);
-
-    if (rawState != lastRawState) {
-        lastRawState = rawState;
-        debounceStarted = now;
-    }
-
-    if (now - debounceStarted >= DebounceMs && rawState != stableButtonState) {
-        stableButtonState = rawState;
-
-        if (stableButtonState == LOW) {
-            pressStarted = now;
-
-            currentScreen = (currentScreen + 1) % 3;
-
-            Serial.printf("Switched to screen %d\n", currentScreen + 1);
-        }
-    }
-
-    // reload
-    if (stableButtonState == LOW && rawState == LOW &&
-        now - pressStarted >= static_cast<unsigned long>(RESET_HOLD_THRESHOLD)) {
-        ESP.restart();
-        return;
-    }
-
-    // true лише на першому кадрі нового екрана
-    const bool screenChanged = currentScreen != previousScreen;
-    previousScreen = currentScreen;
-
-    switch (currentScreen) {
-    case WEATHER_SCREEN:
-        if (screenChanged || millis() - lastWeatherUpdate >= WEATHER_CACHE_TIMEOUT) {
-            showWeather(screenChanged);
-        }
-        break;
-
-    case CLOCK_SCREEN:
-        showTime(screenChanged);
-        break;
-
-    case ROBOT_SCREEN:
-        showRobot(screenChanged);
-        break;
-    }
-
-    delay(1);
+    isFirstLoopIteration = false;
+    // delay(1000);
 }
