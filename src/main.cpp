@@ -11,7 +11,7 @@
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define SDA_PIN 16
+#define SDA_PIN 15
 #define SCL_PIN 5
 #define OLED_ADDR 0x3C
 #define OLED_RESET -1
@@ -303,6 +303,10 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   Wire.begin(SDA_PIN, SCL_PIN);
+
+  if (DEBUG_MODE == 1) {
+    delay(5000);
+  } 
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
     Serial.println(F("SSD1306 init failed"));
