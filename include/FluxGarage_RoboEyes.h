@@ -668,6 +668,15 @@ void drawEyes(){
     display->fillRoundRect(eyeRx, eyeRy, eyeRwidthCurrent, eyeRheightCurrent, eyeRborderRadiusCurrent, MAINCOLOR); // right eye
   }
 
+  // Keep irritation visibly angry throughout the reaction, even at low FPS.
+  // stopReaction() restores the mood captured before the reaction started.
+  if (activeReaction == Reaction::Irritated) {
+    setMood(ANGRY);
+    eyelidsTiredHeight = 0;
+    eyelidsHappyBottomOffset = 0;
+    eyelidsAngryHeight = eyeLheightCurrent / 2;
+  }
+
   // Prepare mood type transitions
   if (tired){eyelidsTiredHeightNext = eyeLheightCurrent/2; eyelidsAngryHeightNext = 0;} else{eyelidsTiredHeightNext = 0;}
   if (angry){eyelidsAngryHeightNext = eyeLheightCurrent/2; eyelidsTiredHeightNext = 0;} else{eyelidsAngryHeightNext = 0;}
